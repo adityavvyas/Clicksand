@@ -1,0 +1,9 @@
+# Converter tool - not needed in production
+icon_converter.html
+
+# SVG source
+logo.svg
+
+# OS files
+.DS_Store
+Thumbs.db

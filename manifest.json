@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Clicksand",
+  "version": "1.2",
+  "description": "Tracks the active time spent on each tab. Specialized tracking for video sites.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "windows"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Clicksand",
+    "default_icon": "hourglass.png"
+  },
+  "icons": {
+    "16": "hourglass.png",
+    "48": "hourglass.png",
+    "128": "hourglass.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.goclasses.in/*",
+        "*://*.youtube.com/*",
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": true
+    }
+  ]
+}

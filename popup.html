@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Clicksand</title>
+    <style>
+        body {
+            width: 400px;
+            /* Wider for chart */
+            font-family: 'Segoe UI', sans-serif;
+            padding: 0;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+
+        header {
+            background-color: #fff;
+            padding: 15px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .tab {
+            padding: 6px 16px;
+            cursor: pointer;
+            border-radius: 20px;
+            background: #eee;
+            font-size: 13px;
+            font-weight: 500;
+            color: #666;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: #2196F3;
+            color: white;
+            box-shadow: 0 2px 5px rgba(33, 150, 243, 0.3);
+        }
+
+        #browser-time-container {
+            text-align: center;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 8px;
+        }
+
+        #chart-container {
+            position: relative;
+            height: 200px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        canvas {
+            max-height: 100%;
+            max-width: 100%;
+        }
+
+        /* Pinned Section style */
+        #pinned-container {
+            padding: 15px;
+            padding-bottom: 0;
+            display: none;
+            /* Hidden by default */
+        }
+
+        #stats-list {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 50px;
+            /* Ensure visibility */
+        }
+
+        .item {
+            display: flex;
+            align-items: center;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+            transition: all 0.2s ease;
+        }
+
+        .item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-color: #e0e0e0;
+            background-color: #fafafa;
+        }
+
+        .icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            border-radius: 4px;
+        }
+
+        .domain {
+            flex-grow: 1;
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .time {
+            font-weight: 600;
+            color: #2196F3;
+            font-size: 13px;
+            min-width: 60px;
+            text-align: right;
+        }
+
+        .footer {
+            padding: 15px;
+            text-align: center;
+            border-top: 1px solid #ddd;
+            background: #fff;
+        }
+
+        button#export-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        button#export-btn:hover {
+            background: #45a049;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        /* TOOLTIP STYLE (Speech Bubble) */
+        #tooltip {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.98);
+            color: #333;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            white-space: nowrap;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            border: 1px solid #eee;
+        }
+
+        /* Arrow */
+        #tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            /* Bottom of tooltip */
+            left: 50%;
+            margin-left: -6px;
+            border-width: 6px;
+            border-style: solid;
+            border-color: white transparent transparent transparent;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="tabs">
+            <div class="tab active" data-view="today">Today</div>
+            <div class="tab" data-view="weekly">Weekly</div>
+            <div class="tab" data-view="monthly">Monthly</div>
+        </div>
+
+        <div id="browser-time-container">
+            <div style="font-size:12px; color:#555;">Total Browser Time</div>
+            <div id="total-browser-time" style="font-size:18px; font-weight:bold; color:#1565C0;">0s</div>
+        </div>
+
+        <div id="chart-container">
+            <canvas id="timeChart"></canvas>
+            <canvas id="weeklyChart" class="hidden"></canvas>
+        </div>
+    </header>
+
+    <div id="pinned-container">
+        <div class="section-title">Pinned</div>
+        <div id="pinned-list"></div>
+    </div>
+
+    <div style="padding: 15px 15px 0 15px;">
+        <div class="section-title">All Sites</div>
+    </div>
+    <div id="stats-list">
+        <!-- List Items -->
+    </div>
+
+    <!-- The Tooltip Element -->
+    <div id="tooltip"></div>
+
+    <div class="footer hidden" id="monthly-footer">
+        <button id="export-btn">Download CSV Report</button>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
