@@ -2,6 +2,7 @@
 
 let currentView = 'today';
 let pinnedSites = [];
+let sortOption = 'time-desc'; // Default sort: time high to low
 // Store hit regions: { type: 'rect'|'arc', x, y, w, h, cx, cy, innerRadius, outerRadius, startAngle, endAngle, data: {} }
 let chartRegions = [];
 
@@ -36,6 +37,38 @@ function initTabs() {
 
             const tc = document.getElementById('timeChart');
             const wc = document.getElementById('weeklyChart');
+            const sp = document.getElementById('settings-panel');
+            const cc = document.getElementById('chart-container');
+            const bc = document.getElementById('browser-time-container');
+            const pc = document.getElementById('pinned-container');
+            const sl = document.getElementById('stats-list');
+            const sc = document.getElementById('sort-container');
+            const lg = document.getElementById('chart-legend');
+            const allSitesTitle = document.querySelector('[data-section="all-sites"]');
+
+            // Settings view handling
+            if (currentView === 'settings') {
+                if (sp) sp.classList.remove('hidden');
+                if (cc) cc.classList.add('hidden');
+                if (bc) bc.classList.add('hidden');
+                if (pc) pc.classList.add('hidden');
+                if (sl) sl.classList.add('hidden');
+                if (sc) sc.classList.add('hidden');
+                if (lg) lg.classList.add('hidden');
+                if (allSitesTitle) allSitesTitle.classList.add('hidden');
+                return;
+            } else {
+                // Restore all visibility when leaving settings
+                if (sp) sp.classList.add('hidden');
+                if (cc) cc.classList.remove('hidden');
+                if (bc) bc.classList.remove('hidden');
+                if (sl) sl.classList.remove('hidden');
+                if (sc) sc.classList.remove('hidden');
+                if (lg) lg.classList.remove('hidden');
+                if (allSitesTitle) allSitesTitle.classList.remove('hidden');
+                if (pc) pc.classList.remove('hidden');
+            }
+
             if (tc) tc.classList.toggle('hidden', currentView === 'weekly');
             if (wc) wc.classList.toggle('hidden', currentView !== 'weekly');
 
@@ -45,6 +78,59 @@ function initTabs() {
 
     const exportBtn = document.getElementById('export-btn');
     if (exportBtn) exportBtn.addEventListener('click', exportCSV);
+
+    // Sort dropdown handler
+    const sortSelect = document.getElementById('sort-select');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+            sortOption = sortSelect.value;
+            loadData(currentView);
+        });
+    }
+    // Reset Data Logic
+    const resetBtn = document.getElementById('reset-data-btn');
+    const modal = document.getElementById('confirmation-modal');
+    const cancelBtn = document.getElementById('cancel-reset-btn');
+    const confirmBtn = document.getElementById('confirm-reset-btn');
+
+    if (resetBtn && modal && cancelBtn && confirmBtn) {
+        resetBtn.addEventListener('click', () => {
+            modal.classList.remove('hidden');
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+        confirmBtn.addEventListener('click', async () => {
+            // Disable button
+            confirmBtn.disabled = true;
+            confirmBtn.innerText = "Deleting...";
+
+            try {
+                await chrome.runtime.sendMessage({ action: 'RESET_DATA' });
+
+                // Clear local caches in popup
+                await loadData('today');
+
+                // Show success checkmark briefly? or just hide
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerText = "Delete";
+                    // Maybe refreshing the view
+                    window.location.reload();
+                }, 1000);
+            } catch (e) {
+                console.error("Reset failed", e);
+                confirmBtn.innerText = "Error";
+                setTimeout(() => {
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerText = "Delete";
+                }, 2000);
+            }
+        });
+    }
 }
 
 function initTooltips() {
@@ -129,49 +215,68 @@ function initTooltips() {
 
 async function loadData(view) {
     try {
-        const data = await chrome.storage.local.get(['today_stats', 'history']);
+        // ALWAYS fetch live stats for "Today" component (Active & Video time)
+        // This ensures Weekly/Monthly views update second-by-second for today's activity.
+        let liveToday = {};
+        try {
+            liveToday = await chrome.runtime.sendMessage({ action: 'GET_LIVE_STATS' });
+        } catch (e) {
+            // Fallback if background not reachable (rare)
+            const d = await chrome.storage.local.get(['today_stats']);
+            liveToday = d.today_stats || {};
+        }
+
+        // Always fetch history (active or not, we might need it)
+        const hData = await chrome.storage.local.get(['history']);
+        const history = hData.history || {};
 
         if (view === 'weekly') {
-            const aggregated = aggregateWeekly(data.history, data.today_stats);
+            const aggregated = aggregateWeekly(history, liveToday);
+            renderBrowserTime(aggregated.browser_time);
+
+            // Separation for rendering
+            const pinnedStats = {};
+            const otherStats = {};
+            Object.entries(aggregated).forEach(([domain, info]) => {
+                if (domain === 'browser_time') return;
+                let inf = (typeof info === 'number') ? { time: info } : info;
+                if (pinnedSites.includes(domain)) pinnedStats[domain] = inf;
+                else otherStats[domain] = inf;
+            });
+
+            renderPinned(pinnedStats);
+            await renderList(otherStats);
+            renderWeeklyChart(history, liveToday);
+            return;
+        }
+
+        if (view === 'monthly') {
+            const aggregated = aggregateMonthly(history, liveToday);
             renderBrowserTime(aggregated.browser_time);
 
             const pinnedStats = {};
             const otherStats = {};
-
             Object.entries(aggregated).forEach(([domain, info]) => {
                 if (domain === 'browser_time') return;
-                // Safety: info might be number if legacy data? verify object
                 let inf = (typeof info === 'number') ? { time: info } : info;
-
-                if (pinnedSites.includes(domain)) {
-                    pinnedStats[domain] = inf;
-                } else {
-                    otherStats[domain] = inf;
-                }
+                if (pinnedSites.includes(domain)) pinnedStats[domain] = inf;
+                else otherStats[domain] = inf;
             });
 
             renderPinned(pinnedStats);
-            renderList(otherStats);
-            renderWeeklyChart(data.history, data.today_stats);
+            await renderList(otherStats);
+            renderChart(aggregated);
             return;
         }
 
-        // Today / Monthly
-        let stats = {};
-        if (view === 'today') {
-            stats = data.today_stats || {};
-        } else if (view === 'monthly') {
-            stats = aggregateMonthly(data.history, data.today_stats);
-        }
-
-        renderBrowserTime(stats.browser_time || 0);
+        // View === 'today' (Default)
+        renderBrowserTime(liveToday.browser_time || 0);
 
         const pinnedStats = {};
         const otherStats = {};
 
-        Object.entries(stats).forEach(([domain, info]) => {
+        Object.entries(liveToday).forEach(([domain, info]) => {
             if (domain === 'browser_time') return;
-            // Safety
             if (!info) return;
 
             if (pinnedSites.includes(domain)) {
@@ -182,8 +287,9 @@ async function loadData(view) {
         });
 
         renderPinned(pinnedStats);
-        renderList(otherStats);
-        renderChart(stats);
+        await renderList(otherStats);
+        renderChart(liveToday);
+
     } catch (e) {
         console.error("Error loadData", e);
         document.getElementById('stats-list').innerHTML = '<div style="padding:20px; color:red;">Error loading data</div>';
@@ -203,127 +309,223 @@ function renderPinned(stats) {
     const wrapper = document.getElementById('pinned-container');
     if (!container || !wrapper) return;
 
-    container.innerHTML = '';
-
     // Sort safely
     const entries = Object.entries(stats).sort((a, b) => (b[1].time || 0) - (a[1].time || 0));
 
     if (entries.length === 0) {
         wrapper.style.display = 'none';
+        container.innerHTML = '';
         return;
     }
     wrapper.style.display = 'block';
 
+    // Map existing elements
+    const existingMap = new Map();
+    Array.from(container.children).forEach(el => {
+        if (el.dataset.domain) existingMap.set(el.dataset.domain, el);
+    });
+
     entries.forEach(([domain, info]) => {
-        const item = document.createElement('div');
-        item.className = 'item';
-        item.style.background = '#e8f5e9';
-        item.style.border = '1px solid #c8e6c9';
-        item.style.position = 'relative';
+        let item = existingMap.get(domain);
 
-        const pinBtn = document.createElement('div');
-        pinBtn.innerHTML = ICON_PIN_FILLED;
-        pinBtn.style.cursor = 'pointer';
-        pinBtn.style.marginRight = '10px';
-        pinBtn.style.display = 'flex';
-        pinBtn.title = "Unpin";
-        pinBtn.onclick = async () => {
-            pinnedSites = pinnedSites.filter(s => s !== domain);
-            await chrome.storage.local.set({ pinnedSites });
-            loadData(currentView);
-        };
+        if (!item) {
+            item = document.createElement('div');
+            item.className = 'item'; // Standard Item Style
+            // Removing specific green background to match "other sites"
+            // But maybe keep a subtle border to distinguish?
+            // User asked for "same details", implies same look.
+            // But we want to show it IS pinned. The header "Pinned" does that.
+            item.dataset.domain = domain;
 
-        const img = document.createElement('img');
-        img.className = 'icon';
-        img.src = info.icon || _favicon(domain);
+            const pinBtn = document.createElement('div');
+            pinBtn.innerHTML = ICON_PIN_FILLED; // Filled to show it IS pinned
+            pinBtn.style.cursor = 'pointer';
+            pinBtn.style.marginRight = '10px';
+            pinBtn.style.display = 'flex';
+            pinBtn.title = "Unpin";
+            pinBtn.onclick = async () => {
+                pinnedSites = pinnedSites.filter(s => s !== domain);
+                await chrome.storage.local.set({ pinnedSites });
+                loadData(currentView);
+            };
 
-        const dom = document.createElement('div');
-        dom.className = 'domain';
+            const img = document.createElement('img');
+            img.className = 'icon';
+            img.src = info.icon || _favicon(domain);
 
-        let html = `<div style="font-weight:bold; font-size:14px; margin-bottom:2px;">${domain}</div>`;
-        const showDual = (info.total_tab_time !== undefined && info.total_tab_time > 0);
+            const dom = document.createElement('div');
+            dom.className = 'domain';
 
-        if (showDual) {
-            html += `
-             <div style="display:flex; gap:10px; font-size:11px; align-items:center;">
-                <span style="color:#2E7D32; font-weight:600; background:#fff; padding:2px 6px; border-radius:4px; border:1px solid #C8E6C9;">
-                    Video: ${formatTime(info.time)}
-                </span>
-                <span style="color:#666;">
-                    Tab: ${formatTime(info.total_tab_time)}
-                </span>
-             </div>`;
-        } else {
-            html += `<div style="font-size:11px; color:#666;">Active: ${formatTime(info.time)}</div>`;
+            const time = document.createElement('div');
+            time.className = 'time';
+
+            item.appendChild(pinBtn);
+            item.appendChild(img);
+            item.appendChild(dom);
+            item.appendChild(time);
         }
-        dom.innerHTML = html;
 
-        item.appendChild(pinBtn);
-        item.appendChild(img);
-        item.appendChild(dom);
-        container.appendChild(item);
+        // Update Content
+        const dom = item.querySelector('.domain');
+        const time = item.querySelector('.time');
+
+        let html = `<div>${domain}</div>`;
+        const sessions = info.sessions || 0;
+        const hasVideoTime = (info.video_time !== undefined && info.video_time > 0);
+
+        if (hasVideoTime) {
+            html += `<div style="font-size:10px; color:var(--text-muted);">Video: <b>${formatTime(info.video_time)}</b> | Active: ${formatTime(info.time)} | ${sessions} session${sessions !== 1 ? 's' : ''}</div>`;
+        } else {
+            html += `<div style="font-size:10px; color:var(--text-muted);">${sessions} session${sessions !== 1 ? 's' : ''}</div>`;
+        }
+
+        // We omit the progress bar for Pinned items to avoid confusion with the "All Sites" percentage
+        // unless we passed global total. Simpler is cleaner.
+
+        if (dom.innerHTML !== html) dom.innerHTML = html;
+
+        const timeText = formatTime(info.time);
+        if (time.textContent !== timeText) time.textContent = timeText;
+
+        container.appendChild(item); // Reorder/Append
+    });
+
+    // Remove unused
+    const newDomains = new Set(entries.map(e => e[0]));
+    Array.from(container.children).forEach(el => {
+        if (!newDomains.has(el.dataset.domain)) el.remove();
     });
 }
 
-function renderList(stats) {
+async function renderList(stats) {
     const container = document.getElementById('stats-list');
     if (!container) return;
-    container.innerHTML = '';
 
-    // Sort safely
-    const sorted = Object.entries(stats)
-        .sort((a, b) => (b[1].time || 0) - (a[1].time || 0))
-        .slice(0, 50);
+    // Sort based on sortOption
+    let sorted = Object.entries(stats);
+
+    switch (sortOption) {
+        case 'time-desc':
+            sorted.sort((a, b) => (b[1].time || 0) - (a[1].time || 0));
+            break;
+        case 'time-asc':
+            sorted.sort((a, b) => (a[1].time || 0) - (b[1].time || 0));
+            break;
+        case 'sessions-desc':
+            sorted.sort((a, b) => (b[1].sessions || 0) - (a[1].sessions || 0));
+            break;
+        case 'sessions-asc':
+            sorted.sort((a, b) => (a[1].sessions || 0) - (b[1].sessions || 0));
+            break;
+        case 'name-asc':
+            sorted.sort((a, b) => a[0].localeCompare(b[0]));
+            break;
+        case 'name-desc':
+            sorted.sort((a, b) => b[0].localeCompare(a[0]));
+            break;
+        default:
+            sorted.sort((a, b) => (b[1].time || 0) - (a[1].time || 0));
+    }
+
+    sorted = sorted.slice(0, 50);
 
     if (sorted.length === 0) {
         container.innerHTML = '<div style="text-align:center; padding:20px; color:#888">No data found</div>';
         return;
     }
 
-    sorted.forEach(([domain, info]) => {
-        // Safety check
-        if (!info) return;
+    // If currently showing "No data found", clear it
+    if (container.children.length > 0 && !container.children[0].classList.contains('item')) {
+        container.innerHTML = '';
+    }
 
-        const item = document.createElement('div');
-        item.className = 'item';
+    // Calculate total sessions for percentage
+    const totalSessions = Object.values(stats).reduce((sum, s) => sum + (s.sessions || 0), 0);
 
-        const pinBtn = document.createElement('div');
-        pinBtn.innerHTML = ICON_PIN_OUTLINE;
-        pinBtn.style.cursor = 'pointer';
-        pinBtn.style.marginRight = '10px';
-        pinBtn.style.display = 'flex';
-        pinBtn.title = "Pin to top";
-        pinBtn.onclick = async () => {
-            if (!pinnedSites.includes(domain)) {
-                pinnedSites.push(domain);
-                await chrome.storage.local.set({ pinnedSites });
-                loadData(currentView);
-            }
-        };
+    const existingMap = new Map();
+    Array.from(container.children).forEach(el => {
+        if (el.dataset.domain) existingMap.set(el.dataset.domain, el);
+    });
 
-        const img = document.createElement('img');
-        img.className = 'icon';
-        img.src = info.icon || _favicon(domain);
+    for (const [domain, info] of sorted) {
+        if (!info) continue;
 
-        const dom = document.createElement('div');
-        dom.className = 'domain';
+        let item = existingMap.get(domain);
+
+        if (!item) {
+            item = document.createElement('div');
+            item.className = 'item';
+            item.dataset.domain = domain;
+
+            const pinBtn = document.createElement('div');
+            pinBtn.innerHTML = ICON_PIN_OUTLINE;
+            pinBtn.style.cursor = 'pointer';
+            pinBtn.style.marginRight = '10px';
+            pinBtn.style.display = 'flex';
+            pinBtn.title = "Pin to top";
+            pinBtn.onclick = async () => {
+                if (!pinnedSites.includes(domain)) {
+                    pinnedSites.push(domain);
+                    await chrome.storage.local.set({ pinnedSites });
+                    loadData(currentView);
+                }
+            };
+
+            const img = document.createElement('img');
+            img.className = 'icon';
+            img.src = info.icon || _favicon(domain);
+
+            const dom = document.createElement('div');
+            dom.className = 'domain';
+
+            const time = document.createElement('div');
+            time.className = 'time';
+
+            item.appendChild(pinBtn);
+            item.appendChild(img);
+            item.appendChild(dom);
+            item.appendChild(time);
+        }
+
+        // Update content
+        const dom = item.querySelector('.domain');
+        const time = item.querySelector('.time');
 
         let html = `<div>${domain}</div>`;
+        const sessions = info.sessions || 0;
+        const hasVideoTime = (info.video_time !== undefined && info.video_time > 0);
 
-        if (info.total_tab_time && info.total_tab_time > 0) {
-            html += `<div style="font-size:10px; color:#999;">Video: <b>${formatTime(info.time)}</b> | Tab: ${formatTime(info.total_tab_time)}</div>`;
+        // Percentage Calculation
+        let percent = 0;
+        if (totalSessions > 0) {
+            percent = (sessions / totalSessions) * 100;
         }
-        dom.innerHTML = html;
 
-        const time = document.createElement('div');
-        time.className = 'time';
-        time.textContent = formatTime(info.time);
+        if (hasVideoTime) {
+            html += `<div style="font-size:10px; color:var(--text-muted);">Video: <b>${formatTime(info.video_time)}</b> | Active: ${formatTime(info.time)} | ${sessions} session${sessions !== 1 ? 's' : ''}</div>`;
+        } else {
+            html += `<div style="font-size:10px; color:var(--text-muted);">${sessions} session${sessions !== 1 ? 's' : ''}</div>`;
+        }
 
-        item.appendChild(pinBtn);
-        item.appendChild(img);
-        item.appendChild(dom);
-        item.appendChild(time);
+        // Progress Bar
+        html += `
+        <div style="width:100%; height:4px; background:#eee; border-radius:2px; margin-top:4px; overflow:hidden;">
+            <div style="width:${percent}%; height:100%; background:var(--accent); border-radius:2px;"></div>
+        </div>
+        `;
+
+        if (dom.innerHTML !== html) dom.innerHTML = html;
+
+        const timeText = formatTime(info.time);
+        if (time.textContent !== timeText) time.textContent = timeText;
+
         container.appendChild(item);
+    }
+
+    // Remove unused
+    const newDomains = new Set(sorted.map(e => e[0]));
+    Array.from(container.children).forEach(el => {
+        if (el.dataset.domain && !newDomains.has(el.dataset.domain)) el.remove();
     });
 }
 
@@ -334,17 +536,40 @@ function renderWeeklyChart(history, todayStats) {
     chartRegions = chartRegions.filter(r => r.chartId !== 'weeklyChart');
 
     const canvas = document.getElementById('weeklyChart');
+    const legendContainer = document.getElementById('chart-legend');
+    const chartContainer = document.getElementById('chart-container');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
+    // SWITCH TO COLUMN LAYOUT due to user request for labels
+    if (chartContainer) {
+        chartContainer.style.flexDirection = 'column';
+        chartContainer.style.alignItems = 'center';
+    }
+
+    // Get Theme Colors
+    const style = getComputedStyle(document.body);
+    const textColor = style.getPropertyValue('--text-primary').trim();
+    const mutedColor = style.getPropertyValue('--text-muted').trim();
+
+    // CLEAR LEGEND to prevent flexbox squeezing before rebuilding
+    if (legendContainer) legendContainer.innerHTML = '';
+
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = (rect.width || 360) * dpr;
-    canvas.height = 200 * dpr;
+
+    // We hardcode a width that fits nicely with full container
+    const containerWidth = document.getElementById('chart-container').clientWidth;
+    // If container not rendered, fallback
+    const graphWidthAlloc = containerWidth > 0 ? (containerWidth - 140) : 320;
+
+    canvas.width = graphWidthAlloc * dpr;
+    canvas.height = 160 * dpr;
+    canvas.style.width = graphWidthAlloc + 'px';
+    canvas.style.height = '160px'; // Shorter than Today chart
     ctx.scale(dpr, dpr);
 
     const width = canvas.width / dpr;
-    const height = 200;
+    const height = 160;
 
     // Aggregates
     const days = [];
@@ -377,14 +602,42 @@ function renderWeeklyChart(history, todayStats) {
         .slice(0, 5)
         .map(x => x[0]);
 
-    // Draw
-    const paddingX = 30;
+    // Color Generation (Once per chart to ensure consistency across bars)
+    const siteColorMap = {};
+    const usedColors = new Set();
+    topSites.forEach(site => {
+        siteColorMap[site] = getSiteColor(site, usedColors);
+    });
+
+    // Populate Legend (Weekly Totals)
+    if (legendContainer) {
+        // Horizontal Legend for Column Layout
+        legendContainer.style.maxWidth = '100%';
+        legendContainer.style.flexDirection = 'row';
+        legendContainer.style.flexWrap = 'wrap';
+        legendContainer.style.justifyContent = 'center';
+        legendContainer.style.gap = '15px';
+
+        topSites.forEach(site => {
+            const div = document.createElement('div');
+            div.className = 'legend-item';
+            div.innerHTML = `
+                <div class="legend-color" style="background: ${siteColorMap[site]}"></div>
+                <span class="legend-label" title="${site}">${site}</span>
+                <span class="legend-time">${formatTime(siteTotals[site])}</span>
+            `;
+            legendContainer.appendChild(div);
+        });
+    }
+
+
+    // Draw Graph
+    const paddingX = 40;
     const paddingY = 20;
-    const graphWidth = width - (paddingX * 2);
-    const graphHeight = height - paddingY - 10;
+    const drawW = width - paddingX;
+    const drawH = height - paddingY - 10;
 
-    const barWidth = graphWidth / 7 * 0.6;
-
+    // Scale
     let maxDaily = 0;
     days.forEach(day => {
         let dailyTotal = 0;
@@ -398,17 +651,22 @@ function renderWeeklyChart(history, todayStats) {
 
     ctx.clearRect(0, 0, width, height);
 
+    const barWidth = (drawW - paddingX) / 7 * 0.7;
+    const step = (drawW - paddingX) / 7;
+
     days.forEach((day, index) => {
-        const step = graphWidth / 7;
         const barX = paddingX + (step * index) + (step - barWidth) / 2;
+        let currentY = drawH;
 
-        let currentY = graphHeight;
-
+        // Draw Stacked Bars
         topSites.forEach(site => {
             const val = (day.data[site] && day.data[site].time) || 0;
             if (val > 0) {
-                const h = (val / maxDaily) * graphHeight;
-                ctx.fillStyle = stringToColor(site);
+                const h = (val / maxDaily) * drawH;
+                ctx.fillStyle = siteColorMap[site];
+
+                // Rounded top for top-most segment? Hard to calculate.
+                // Just rect.
                 ctx.fillRect(barX, currentY - h, barWidth, h);
 
                 chartRegions.push({
@@ -425,6 +683,7 @@ function renderWeeklyChart(history, todayStats) {
             }
         });
 
+        // Others
         let others = 0;
         Object.entries(day.data).forEach(([d, v]) => {
             if (d === 'browser_time') return;
@@ -432,8 +691,8 @@ function renderWeeklyChart(history, todayStats) {
             others += (v.time || 0);
         });
         if (others > 0) {
-            const h = (others / maxDaily) * graphHeight;
-            ctx.fillStyle = '#e0e0e0';
+            const h = (others / maxDaily) * drawH;
+            ctx.fillStyle = params = style.getPropertyValue('--border').trim() || '#e0e0e0';
             ctx.fillRect(barX, currentY - h, barWidth, h);
 
             chartRegions.push({
@@ -447,15 +706,19 @@ function renderWeeklyChart(history, todayStats) {
             });
         }
 
-        ctx.fillStyle = '#666';
+        // Labels
+        ctx.fillStyle = mutedColor;
         ctx.textAlign = 'center';
-        ctx.font = '11px Segoe UI';
+        ctx.font = '500 10px Inter';
         ctx.fillText(day.label, barX + barWidth / 2, height - 5);
     });
 
+    // Y-Axis Labels
     ctx.textAlign = 'right';
-    ctx.fillText(`${(maxDaily / 3600).toFixed(1)}h`, paddingX - 5, 10);
-    ctx.fillText("0", paddingX - 5, graphHeight);
+    ctx.font = '500 10px Inter';
+    ctx.fillStyle = mutedColor;
+    ctx.fillText(`${(maxDaily / 3600).toFixed(1)}h`, paddingX - 8, 10);
+    ctx.fillText("0", paddingX - 8, drawH);
 }
 
 
@@ -465,10 +728,32 @@ function renderChart(stats) {
     chartRegions = chartRegions.filter(r => r.chartId !== 'timeChart');
 
     const canvas = document.getElementById('timeChart');
+    const legendContainer = document.getElementById('chart-legend');
+    const chartContainer = document.getElementById('chart-container');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    const size = 180;
+    // RESTORE ROW LAYOUT for Today View
+    if (chartContainer) {
+        chartContainer.style.flexDirection = 'row';
+        chartContainer.style.alignItems = 'center';
+    }
+    // Restore Legend Styles
+    if (legendContainer) {
+        legendContainer.style.maxWidth = '160px'; // Original
+        legendContainer.style.flexDirection = 'column';
+        legendContainer.style.flexWrap = 'nowrap';
+        legendContainer.style.justifyContent = 'flex-start';
+        legendContainer.style.gap = '8px';
+    }
+
+    // Get Theme Colors
+    const style = getComputedStyle(document.body);
+    const textColor = style.getPropertyValue('--text-primary').trim();
+    const mutedColor = style.getPropertyValue('--text-muted').trim();
+    const bgColor = style.getPropertyValue('--bg-secondary').trim(); // For clearing if needed, or matching bg
+
+    const size = 150; // Compact size
     const dpr = window.devicePixelRatio || 1;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
@@ -482,82 +767,113 @@ function renderChart(stats) {
     const sorted = Object.entries(chartStats).sort((a, b) => (b[1].time || 0) - (a[1].time || 0));
     const total = sorted.reduce((sum, item) => sum + (item[1].time || 0), 0);
 
-    let startAngle = -0.5 * Math.PI;
     const center = size / 2;
-    const radius = center - 10;
-    const innerRadius = radius * 0.65;
+    const radius = 65;
+    const thickness = 20;
+
+    // Clear legend
+    if (legendContainer) legendContainer.innerHTML = '';
+
+    // Helper to draw segment
+    function drawSegment(start, end, color) {
+        ctx.beginPath();
+        ctx.arc(center, center, radius, start, end);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = thickness;
+        ctx.stroke();
+    }
+
+    let startAngle = -0.5 * Math.PI;
 
     if (total === 0) {
-        ctx.beginPath();
-        ctx.arc(center, center, radius, 0, 2 * Math.PI);
-        ctx.strokeStyle = '#eee';
-        ctx.lineWidth = 20;
-        ctx.stroke();
+        drawSegment(0, 2 * Math.PI, style.getPropertyValue('--border').trim());
+
+        ctx.fillStyle = mutedColor;
+        ctx.font = '600 14px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText("No Activity", center, center);
         return;
     }
 
-    sorted.slice(0, 8).forEach((item, index) => {
+    const topItems = sorted.slice(0, 6); // Top 6 is cleaner
+    const legendItems = [];
+
+    // Color Setup for Today Chart
+    const usedColors = new Set();
+
+    topItems.forEach((item, index) => {
         const t = item[1].time || 0;
         const sliceAngle = (t / total) * 2 * Math.PI;
+        // Use Smart Brand Color
+        const color = getSiteColor(item[0], usedColors);
 
-        ctx.beginPath();
-        ctx.moveTo(center, center);
-        ctx.arc(center, center, radius, startAngle, startAngle + sliceAngle);
-        ctx.fillStyle = stringToColor(item[0]);
-        ctx.fill();
+        // Draw Segment
+        // Add tiny gap? No, seamlessly looks better for time
+        drawSegment(startAngle, startAngle + sliceAngle, color);
 
+        // Interaction Region (approximate with arc)
         chartRegions.push({
             chartId: 'timeChart',
             type: 'arc',
             cx: center,
             cy: center,
-            innerRadius: innerRadius,
-            outerRadius: radius,
+            innerRadius: radius - thickness / 2,
+            outerRadius: radius + thickness / 2,
             startAngle: startAngle,
             endAngle: startAngle + sliceAngle,
             data: { label: item[0], value: t }
         });
 
+        legendItems.push({ domain: item[0], time: t, color: color });
         startAngle += sliceAngle;
     });
 
-    if (sorted.length > 8) {
-        const remaining = sorted.slice(8).reduce((sum, item) => sum + (item[1].time || 0), 0);
+    if (sorted.length > 6) {
+        const remaining = sorted.slice(6).reduce((sum, item) => sum + (item[1].time || 0), 0);
         const sliceAngle = (remaining / total) * 2 * Math.PI;
 
-        ctx.beginPath();
-        ctx.moveTo(center, center);
-        ctx.arc(center, center, radius, startAngle, startAngle + sliceAngle);
-        ctx.fillStyle = '#e0e0e0';
-        ctx.fill();
+        drawSegment(startAngle, startAngle + sliceAngle, '#e0e0e0');
 
         chartRegions.push({
             chartId: 'timeChart',
             type: 'arc',
             cx: center,
             cy: center,
-            innerRadius: innerRadius,
-            outerRadius: radius,
+            innerRadius: radius - thickness / 2,
+            outerRadius: radius + thickness / 2,
             startAngle: startAngle,
             endAngle: startAngle + sliceAngle,
             data: { label: 'Others', value: remaining }
         });
+
+        legendItems.push({ domain: 'Others', time: remaining, color: '#e0e0e0' });
     }
 
-    ctx.beginPath();
-    ctx.arc(center, center, innerRadius, 0, 2 * Math.PI);
-    ctx.fillStyle = '#f5f5f5';
-    ctx.fill();
-
-    ctx.fillStyle = '#333';
-    ctx.font = 'bold 20px Segoe UI';
+    // Center Text
+    ctx.fillStyle = textColor;
+    ctx.font = 'bold 20px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(formatTime(total), center, center - 10);
+    ctx.fillText(formatTime(total).split(' ')[0], center, center - 10); // "2h"
 
-    ctx.font = '11px Segoe UI';
-    ctx.fillStyle = '#666';
-    ctx.fillText("Total Time", center, center + 12);
+    ctx.fillStyle = mutedColor;
+    ctx.font = '500 12px Inter, sans-serif';
+    ctx.fillText(formatTime(total).split(' ').slice(1).join(' ') || 'Total', center, center + 12);
+
+    // Render legend
+    if (legendContainer) {
+        legendItems.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'legend-item';
+            div.innerHTML = `
+                <div class="legend-color" style="background: ${item.color}"></div>
+                <span class="legend-label" title="${item.domain}">${item.domain}</span>
+                <span class="legend-time">${formatTime(item.time)}</span>
+            `;
+            legendContainer.appendChild(div);
+        });
+    }
 }
 
 
@@ -602,11 +918,121 @@ function mergeStats(target, source) {
     });
 }
 
+// --- COLOR SYSTEM ---
+
+const BRAND_COLORS = {
+    'youtube.com': '#FF0000',
+    'google.com': '#4285F4',
+    'facebook.com': '#1877F2',
+    'twitter.com': '#1DA1F2',
+    'x.com': '#000000',
+    'instagram.com': '#E1306C', // Pink/Purple gradient usually, pick dominant
+    'linkedin.com': '#0077B5',
+    'github.com': '#181717', // Dark
+    'reddit.com': '#FF4500',
+    'twitch.tv': '#9146FF',
+    'amazon.com': '#FF9900',
+    'netflix.com': '#E50914',
+    'wikipedia.org': '#000000',
+    'stackoverflow.com': '#F48024',
+    'chatgpt.com': '#74aa9c',
+    'openai.com': '#74aa9c',
+    'whatsapp.com': '#25D366',
+    'spotify.com': '#1DB954',
+    'tiktok.com': '#000000',
+    'bing.com': '#008373',
+    'duckduckgo.com': '#DE5833',
+    'discord.com': '#5865F2',
+    'microsoft.com': '#F25022',
+    'apple.com': '#A2AAAD',
+    'gmail.com': '#EA4335',
+    'outlook.com': '#0078D4',
+    'yahoo.com': '#6001D2'
+};
+
+function getSiteColor(domain, usedColors = new Set()) {
+    let color = null;
+
+    // 1. Check Brand Colors
+    // Normalize to handle subdomains loosely if needed, but usually strict match or 'ends with' is better
+    // Simple exact match first
+    for (const [key, val] of Object.entries(BRAND_COLORS)) {
+        if (domain === key || domain.endsWith('.' + key)) {
+            color = val;
+            break;
+        }
+    }
+
+    // 2. Fallback to Hash
+    if (!color) {
+        color = stringToColor(domain);
+    }
+
+    // 3. Collision Avoidance (The "Second Unique Color" Logic)
+    // If this color is already used (or very close), shift it.
+    // Since we can't easily check "visual closeness" efficiently without a huge lib,
+    // we'll rely on strict string equality of hex codes first for 'usedColors'.
+    // If exact match found, we shift hue.
+
+    let iterations = 0;
+    while (usedColors.has(color) && iterations < 10) {
+        // Shift Hue
+        color = shiftColor(color, 30 * (iterations + 1));
+        iterations++;
+    }
+
+    usedColors.add(color);
+    return color;
+}
+
 function stringToColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
     const h = Math.abs(hash) % 360;
-    return `hsl(${h}, 75%, 50%)`;
+    // Use consistent Saturation/Lightness for nice UI
+    return hslToHex(h, 75, 50);
+}
+
+function shiftColor(hex, degree) {
+    let [h, s, l] = hexToHsl(hex);
+    h = (h + degree) % 360;
+    return hslToHex(h, s * 100, l * 100);
+}
+
+function hexToHsl(hex) {
+    hex = hex.replace('#', '');
+    let r = parseInt(hex.substring(0, 2), 16) / 255;
+    let g = parseInt(hex.substring(2, 4), 16) / 255;
+    let b = parseInt(hex.substring(4, 6), 16) / 255;
+
+    let max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+
+    if (max === min) {
+        h = s = 0; // achromatic
+    } else {
+        let d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h *= 60;
+    }
+    return [h, s, l];
+}
+
+// Helper: HSL to Hex
+function hslToHex(h, s, l) {
+    l /= 100;
+    const a = s * Math.min(l, 1 - l) / 100;
+    const f = n => {
+        const k = (n + h / 30) % 12;
+        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * color).toString(16).padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
 }
 
 function _favicon(domain) {
@@ -614,10 +1040,15 @@ function _favicon(domain) {
 }
 
 function formatTime(seconds) {
-    if (!seconds && seconds !== 0) return '0s';
-    if (seconds < 60) return `${Math.floor(seconds)}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-    return `${(seconds / 3600).toFixed(1)}h`;
+    if (!seconds && seconds !== 0) return '00:00:00';
+
+    const totalSeconds = Math.floor(seconds);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
 }
 
 function isAngleInSlice(angle, start, end) {
@@ -682,7 +1113,231 @@ async function exportCSV() {
     }
 }
 
-// --- BOOTSTRAP ---
+// --- SETTINGS ---
+
+async function initSettings() {
+    const toggle = document.getElementById('video-budget-toggle');
+    const slider = document.getElementById('video-budget-slider');
+    const display = document.getElementById('budget-limit-display');
+    const limitSection = document.getElementById('budget-limit-section');
+    const themeSelect = document.getElementById('theme-select');
+    const compactToggle = document.getElementById('compact-toggle');
+
+    if (!toggle || !slider) return;
+
+    // Load current settings
+    try {
+        const data = await chrome.storage.local.get(['video_budget', 'app_settings']);
+        const budget = data.video_budget || { enabled: false, limit: 3600 };
+        const settings = data.app_settings || { theme: 'default', compact: false };
+
+        toggle.checked = budget.enabled;
+        slider.value = Math.floor(budget.limit / 60);
+        updateLimitDisplay(slider.value);
+        limitSection.style.opacity = budget.enabled ? '1' : '0.5';
+
+        // Apply theme
+        if (themeSelect) {
+            themeSelect.value = settings.theme;
+            document.documentElement.setAttribute('data-theme', settings.theme);
+        }
+
+        // Apply compact mode
+        if (compactToggle) {
+            compactToggle.checked = settings.compact;
+            if (settings.compact) document.body.classList.add('compact');
+        }
+    } catch (e) {
+        console.error("Error loading settings", e);
+    }
+
+    // Video budget toggle handler
+    toggle.addEventListener('change', async () => {
+        limitSection.style.opacity = toggle.checked ? '1' : '0.5';
+        await saveVideoBudget();
+    });
+
+    // Slider handlers
+    slider.addEventListener('input', () => {
+        updateLimitDisplay(slider.value);
+    });
+
+    slider.addEventListener('change', async () => {
+        await saveVideoBudget();
+    });
+
+    // Theme handler
+    if (themeSelect) {
+        themeSelect.addEventListener('change', async () => {
+            const theme = themeSelect.value;
+            document.documentElement.setAttribute('data-theme', theme);
+            await saveAppSettings();
+        });
+    }
+
+    // Compact mode handler
+    if (compactToggle) {
+        compactToggle.addEventListener('change', async () => {
+            if (compactToggle.checked) {
+                document.body.classList.add('compact');
+            } else {
+                document.body.classList.remove('compact');
+            }
+            await saveAppSettings();
+        });
+    }
+
+    function updateLimitDisplay(minutes) {
+        const hrs = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        display.textContent = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+    }
+
+    async function saveVideoBudget() {
+        const budget = {
+            enabled: toggle.checked,
+            limit: parseInt(slider.value) * 60,
+            snoozeUntil: 0
+        };
+        try {
+            await chrome.storage.local.set({ video_budget: budget });
+        } catch (e) {
+            console.error("Error saving settings", e);
+        }
+    }
+
+    async function saveAppSettings() {
+        const settings = {
+            theme: themeSelect ? themeSelect.value : 'default',
+            compact: compactToggle ? compactToggle.checked : false
+        };
+        try {
+            await chrome.storage.local.set({ app_settings: settings });
+        } catch (e) {
+            console.error("Error saving settings", e);
+        }
+    }
+
+    // --- Achievement Sites Logic ---
+    const achInput = document.getElementById('achievement-sites-input');
+    const achIntervalInput = document.getElementById('achievement-interval');
+    const achBtn = document.getElementById('save-achievements-btn');
+
+    if (achInput && achBtn) {
+        // Load existing
+        const achLimitInput = document.getElementById('achievement-limit');
+
+        try {
+            const achData = await chrome.storage.local.get(['achievement_sites', 'achievement_interval', 'achievement_limit']);
+            if (achData.achievement_sites && Array.isArray(achData.achievement_sites)) {
+                achInput.value = achData.achievement_sites.join('\n');
+            }
+            if (achData.achievement_interval && achIntervalInput) {
+                achIntervalInput.value = achData.achievement_interval;
+            }
+            if (achData.achievement_limit && achLimitInput) {
+                achLimitInput.value = achData.achievement_limit;
+            }
+        } catch (e) { }
+
+        achBtn.addEventListener('click', async () => {
+            const raw = achInput.value;
+            const domains = raw.split('\n')
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+
+            let interval = 30;
+            if (achIntervalInput) {
+                interval = parseInt(achIntervalInput.value);
+                if (isNaN(interval) || interval < 1) interval = 30;
+            }
+
+            let limit = 0;
+            if (achLimitInput) {
+                limit = parseInt(achLimitInput.value);
+                if (isNaN(limit) || limit < 0) limit = 0;
+            }
+
+            await chrome.storage.local.set({
+                achievement_sites: domains,
+                achievement_interval: interval,
+                achievement_limit: limit
+            });
+            alert('Achievement settings saved!');
+        });
+    }
+
+    const resetBtn = document.getElementById('reset-achievements-btn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', async () => {
+            if (confirm("Reset all achievement settings?")) {
+                await chrome.storage.local.set({
+                    achievement_sites: [],
+                    achievement_interval: 30,
+                    achievement_limit: 0
+                });
+                achInput.value = '';
+                if (achIntervalInput) achIntervalInput.value = 30;
+                if (achLimitInput) achLimitInput.value = 0;
+                alert('Settings reset!');
+            }
+        });
+    }
+    const testBtn = document.getElementById('test-achievement-btn');
+    if (testBtn) {
+        testBtn.addEventListener('click', async () => {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+            if (!tab) {
+                alert("No active tab found.");
+                return;
+            }
+
+            if (tab.url.startsWith("chrome://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:")) {
+                alert("Cannot show achievements on system pages. Try a website like youtube.com");
+                return;
+            }
+
+            const payload = {
+                action: 'SHOW_ACHIEVEMENT',
+                title: 'Steam-Style Popup',
+                message: 'Unlocked: Developer Testing Mode!'
+            };
+
+            const attemptSend = () => new Promise((resolve, reject) => {
+                chrome.tabs.sendMessage(tab.id, payload, (response) => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve(response);
+                    }
+                });
+            });
+
+            try {
+                // Attempt 1
+                await attemptSend();
+            } catch (error) {
+                console.log("Connection failed, attempting re-injection...");
+                // Attempt 2: Re-inject content script
+                try {
+                    await chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        files: ['content.js']
+                    });
+                    // Short delay for script to initialize
+                    await new Promise(r => setTimeout(r, 100));
+                    await attemptSend();
+                    console.log("Re-injection successful!");
+                } catch (retryError) {
+                    console.error("Retry failed:", retryError);
+                    alert("Could not prompt page even after re-injection.\n\nPlease RELOAD the web page and try again.");
+                }
+            }
+        });
+    }
+}
+
 // --- BOOTSTRAP ---
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -692,6 +1347,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         initTabs();
         await initPins();
         initTooltips();
+        await initSettings();
+
+        // Live update: refresh every 1 second for real-time tracking display
+        setInterval(() => {
+            if (currentView !== 'settings') {
+                loadData(currentView);
+            }
+        }, 1000);
     } catch (e) {
         console.error("Popup initialization failed:", e);
         document.body.innerHTML = `<div style="padding:20px; color:red; text-align:center;">

@@ -1,265 +1,382 @@
-// background.js
+// background.js - Robust Heartbeat Tracking
+// Replaces fragile timestamp-diff logic with a state-based heartbeat.
 
-// --- Mutex for Storage Locking ---
-class Mutex {
-    constructor() {
-        this._queue = [];
-        this._locked = false;
-    }
+let trackerState = {
+    activeTabId: null,
+    activeDomain: null,
+    activeFavIconUrl: null,
+    videoPlayingTabs: new Map(), // Map<TabId, Domain>
+    isIdle: false,
+    isWindowFocused: true,
+    lastHeartbeat: Date.now()
+};
 
-    lock() {
-        return new Promise((resolve) => {
-            if (this._locked) {
-                this._queue.push(resolve);
-            } else {
-                this._locked = true;
-                resolve();
-            }
-        });
-    }
+let todayStats = {};
 
-    unlock() {
-        if (this._queue.length > 0) {
-            const resolve = this._queue.shift();
-            resolve();
-        } else {
-            this._locked = false;
-        }
-    }
-}
+const CONFIG = {
+    idleThresholdSeconds: 60,
+    heartbeatIntervalMs: 1000,
+    saveIntervalMs: 30000
+};
 
-const storageMutex = new Mutex();
-
-let activeTabId = null;
-let lastStartTime = null;
-let trackingPaused = false;
-let videoPlayingMap = {}; // tabId -> boolean
-
-// Initialize on load
+// --- Initialization ---
 (async () => {
-    // Check for daily reset immediately
-    await checkAndRotateDailyStats();
-
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab) {
-        startTracking(tab.id);
+    // 1. Data Migration / Reset (Fresh Start)
+    const resetCheck = await chrome.storage.local.get(['has_reset_v2']);
+    if (!resetCheck.has_reset_v2) {
+        await chrome.storage.local.clear();
+        await chrome.storage.local.set({ has_reset_v2: true });
     }
+
+    // 2. Load data
+    await loadDailyStats();
+
+    // 2. Initial State Check
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab) await updateActiveTab(tab);
+
+    // 3. Start Heartbeat
+    setInterval(heartbeatTick, CONFIG.heartbeatIntervalMs);
+
+    // 4. Persistence Alarm
+    chrome.alarms.create('save_stats', { periodInMinutes: 1 });
+    chrome.alarms.create('keep_alive', { periodInMinutes: 1 });
+
+    // 5. Idle Detection
+    chrome.idle.setDetectionInterval(CONFIG.idleThresholdSeconds);
 })();
 
-// Allow content scripts to connect for keep-alive monitoring
-chrome.runtime.onConnect.addListener((port) => {
-    // Just keep the port open. No specific logic needed.
-});
+// --- The Heartbeat (Core Logic) ---
+async function heartbeatTick() {
+    const now = Date.now();
+    let deltaSeconds = (now - trackerState.lastHeartbeat) / 1000;
+    trackerState.lastHeartbeat = now;
+
+    // Relaxed threshold: Service Workers can sleep and wake up after 10-30s.
+    // We shouldn't discard that time as "System Sleep" if it's just SW Sleep.
+    // 120s is a safe upper bound (User likely wouldn't stare at a frozen screen for 2m without idle triggering).
+    if (deltaSeconds > 120) return;
+
+    if (trackerState.isIdle) return;
+
+    // --- 1. GLOBAL BROWSER TIME ---
+    // Track usage if Window is Focused OR Video is playing (Passive listening)
+    const canTrackBrowser = trackerState.isWindowFocused || trackerState.videoPlayingTabs.size > 0;
+
+    if (canTrackBrowser) {
+        if (!todayStats['browser_time']) todayStats['browser_time'] = 0;
+        todayStats['browser_time'] += deltaSeconds;
+    }
+
+    // --- 2. BACKGROUND VIDEO TRACKING ---
+    // Increment video_time for ALL tabs playing video
+    trackerState.videoPlayingTabs.forEach((domain, tabId) => {
+        if (!todayStats[domain]) {
+            // Init if missing (rare case if tab loaded before extension)
+            todayStats[domain] = { time: 0, currentSessionTime: 0, sessions: 0, icon: '', lastActiveTime: now };
+        }
+        const entry = todayStats[domain];
+        if (!entry.video_time) entry.video_time = 0;
+        entry.video_time += deltaSeconds;
+
+        // We do NOT increment currentSessionTime here anymore.
+        // Achievements are reserved for ACTIVE usage only.
+
+        // Also update last active time to keep session alive?
+        // Maybe not, "Active" implies user interaction. Video is passive.
+        // But let's keep it alive so session doesn't reset while watching a movie.
+        entry.lastActiveTime = now;
+    });
+
+    // --- 3. ACTIVE TAB TRACKING ---
+    // Strict requirement: User must be focused on the window
+    if (!trackerState.isWindowFocused) return;
+
+    // Must have a valid domain
+    if (!trackerState.activeDomain) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab) await updateActiveTab(tab);
+        return;
+    }
+
+    // Ensure entry exists
+    if (!todayStats[trackerState.activeDomain]) {
+        todayStats[trackerState.activeDomain] = {
+            time: 0,
+            currentSessionTime: 0,
+            total_tab_time: 0,
+            sessions: 0,
+            icon: trackerState.activeFavIconUrl,
+            lastActiveTime: Date.now()
+        };
+    }
+
+    const entry = todayStats[trackerState.activeDomain];
+
+    // Increment Active Time
+    entry.time += deltaSeconds;
+
+    // Increment Session Time (Active Only)
+    if (entry.currentSessionTime === undefined) entry.currentSessionTime = 0;
+    entry.currentSessionTime += deltaSeconds;
+
+    // Check Achievements (Active Only)
+    checkAchievements(trackerState.activeDomain, entry.currentSessionTime);
+
+    entry.lastActiveTime = now;
+    if (trackerState.activeFavIconUrl) entry.icon = trackerState.activeFavIconUrl;
+}
 
 // --- Event Listeners ---
 
-// 1. Tab changes
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
-    await stopTracking();
-    if (!trackingPaused) {
-        startTracking(activeInfo.tabId);
-    } else {
-        activeTabId = activeInfo.tabId;
-    }
+    try {
+        const tab = await chrome.tabs.get(activeInfo.tabId);
+        await updateActiveTab(tab);
+    } catch (e) { }
 });
 
-// 2. Tab updated
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    if (tabId === activeTabId && changeInfo.status === 'complete') {
-        // domain might have changed
+    if (tabId === trackerState.activeTabId && changeInfo.status === 'complete') {
+        await updateActiveTab(tab);
     }
 });
 
-// 3. Window focus
+chrome.tabs.onRemoved.addListener((tabId) => {
+    // Clean up video state
+    if (trackerState.videoPlayingTabs.has(tabId)) {
+        trackerState.videoPlayingTabs.delete(tabId);
+    }
+});
+
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
     if (windowId === chrome.windows.WINDOW_ID_NONE) {
-        await stopTracking();
-        trackingPaused = true;
-        activeTabId = null;
+        // Ignored
     } else {
-        trackingPaused = false;
+        trackerState.isWindowFocused = true;
         const [tab] = await chrome.tabs.query({ active: true, windowId: windowId });
-        if (tab) {
-            startTracking(tab.id);
-        }
+        if (tab) await updateActiveTab(tab);
     }
 });
 
-// 4. Tab closed
-chrome.tabs.onRemoved.addListener(async (tabId) => {
-    if (tabId === activeTabId) {
-        await stopTracking();
-        activeTabId = null;
-    }
-    delete videoPlayingMap[tabId];
+chrome.idle.onStateChanged.addListener((newState) => {
+    trackerState.isIdle = (newState !== 'active');
 });
 
-// 5. Message from Content Script
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (sender.tab) {
+        const domain = new URL(sender.tab.url).hostname;
+
         if (request.action === "VIDEO_PLAYING") {
-            videoPlayingMap[sender.tab.id] = true;
+            trackerState.videoPlayingTabs.set(sender.tab.id, domain);
         } else if (request.action === "VIDEO_PAUSED") {
-            videoPlayingMap[sender.tab.id] = false;
-        }
-
-        if (sender.tab.id === activeTabId && !trackingPaused) {
-            await stopTracking(); // Flush current interval
-            startTracking(activeTabId); // Restart with new state
+            trackerState.videoPlayingTabs.delete(sender.tab.id);
+        } else if (request.action === "URL_CHANGED") {
+            if (sender.tab.id === trackerState.activeTabId) {
+                updateActiveTab(sender.tab);
+            }
+            // Also update map if domain changed?
+            // Usually URL change implies reload or nav, so video stops anyway.
         }
     }
-});
+    if (request.action === "GET_LIVE_STATS") {
+        sendResponse(todayStats);
+    } else if (request.action === "RESET_DATA") {
+        // Clear In-Memory Stats
+        for (const key in todayStats) delete todayStats[key];
+        trackerState.videoPlayingTabs.clear();
 
+        // Reset Achievement Checkpoints
+        for (const key in achievementCheckpoints) delete achievementCheckpoints[key];
 
-// --- Tracking Logic ---
+        // Clear Storage
+        chrome.storage.local.remove(['today_stats', 'history'], () => {
+            sendResponse({ success: true });
+        });
 
-function startTracking(tabId) {
-    activeTabId = tabId;
-    lastStartTime = Date.now();
-    videoPlayingMap[tabId] = videoPlayingMap[tabId] || false; // preserve state if exists
-}
-
-async function stopTracking() {
-    if (activeTabId !== null && lastStartTime !== null) {
-        const now = Date.now();
-        const duration = (now - lastStartTime) / 1000;
-        lastStartTime = now;
-
-        try {
-            const tab = await chrome.tabs.get(activeTabId);
-            if (tab && tab.url) {
-                await updateTime(tab.url, duration, tab.favIconUrl, activeTabId);
-            }
-        } catch (e) { }
-    }
-}
-
-async function updateTime(url, seconds, favIconUrl, tabId) {
-    if (!url || !url.startsWith('http')) return;
-    if (seconds <= 0) return;
-
-    const urlObj = new URL(url);
-    const domain = urlObj.hostname;
-
-    await storageMutex.lock();
-    try {
-        const data = await chrome.storage.local.get(['today_stats']);
-        let todayStats = data.today_stats || {};
-
-        if (!todayStats[domain]) {
-            todayStats[domain] = { time: 0, icon: favIconUrl || '' };
-        }
-        if (favIconUrl) todayStats[domain].icon = favIconUrl;
-
-        // --- UNIVERSAL VIDEO TRACKING ---
-
-        // Check signals
-        const explicitPlaying = videoPlayingMap[tabId];
-        let isAudible = false;
-        try {
-            const tab = await chrome.tabs.get(tabId);
-            isAudible = tab.audible;
-        } catch (e) { }
-
-        const isVideoActive = explicitPlaying || isAudible;
-
-        // Determine if this domain is a "Video Site" (has separate metric)
-        // 1. If it already has total_tab_time, preserve that mode.
-        // 2. If video is currently active, upgrade to "Video Site" mode.
-        const isVideoSite = (todayStats[domain].total_tab_time !== undefined) || isVideoActive;
-
-        if (isVideoSite) {
-            // Initialize dual metric if upgrading just now
-            if (todayStats[domain].total_tab_time === undefined) {
-                todayStats[domain].total_tab_time = todayStats[domain].time;
-            }
-
-            // Always increment Tab Time
-            todayStats[domain].total_tab_time += seconds;
-
-            // Increment Video Time only if playing
-            if (isVideoActive) {
-                todayStats[domain].time += seconds;
-            }
-        } else {
-            // Standard Site
-            todayStats[domain].time += seconds;
-        }
-
-        await chrome.storage.local.set({ today_stats: todayStats });
-    } finally {
-        storageMutex.unlock();
-    }
-}
-
-// 6. Audible check
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.audible !== undefined) {
-        // Handled by next update loop (heartbeat or stopTracking)
-        // Optionally trigger immediate state check:
-        // if (tabId === activeTabId) ...
-    }
-});
-
-// --- Daily Rotation ---
-
-async function checkAndRotateDailyStats() {
-    await storageMutex.lock();
-    try {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const data = await chrome.storage.local.get(['currentDate', 'today_stats', 'history']);
-        const lastDate = data.currentDate;
-
-        if (lastDate !== todayStr) {
-            console.log(`Rotated stats from ${lastDate} to ${todayStr}`);
-            let history = data.history || {};
-            if (lastDate && data.today_stats) {
-                history[lastDate] = data.today_stats;
-            }
-            await chrome.storage.local.set({
-                currentDate: todayStr,
-                today_stats: {},
-                history: history
+        // Re-init current active tab stats immediately so we don't crash
+        if (trackerState.activeTabId) {
+            chrome.tabs.get(trackerState.activeTabId, (tab) => {
+                if (tab) updateActiveTab(tab);
             });
         }
-    } finally {
-        storageMutex.unlock();
+        return true; // Async response
+    }
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'save_stats') {
+        saveDailyStats();
+    }
+});
+
+// --- Achievement System ---
+let achievementSites = [];
+let achievementInterval = 30; // Default minutes
+let achievementLimit = 0; // 0 = Unlimited
+let achievementCheckpoints = {};
+
+// --- Helpers ---
+
+async function updateActiveTab(tab) {
+    if (!tab || !tab.url || !tab.url.startsWith('http')) {
+        trackerState.activeDomain = null;
+        trackerState.activeTabId = null;
+        return;
+    }
+
+    const domain = new URL(tab.url).hostname;
+
+    // Session Counting
+    const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+    const now = Date.now();
+    let isNewSession = false;
+
+    if (!todayStats[domain]) {
+        todayStats[domain] = { time: 0, currentSessionTime: 0, sessions: 0, icon: tab.favIconUrl || '', lastActiveTime: 0 };
+        isNewSession = true;
+    } else {
+        const lastActive = todayStats[domain].lastActiveTime || 0;
+        if (domain !== trackerState.activeDomain || (now - lastActive > SESSION_TIMEOUT_MS)) {
+            isNewSession = true;
+        }
+    }
+
+    if (isNewSession) {
+        todayStats[domain].sessions = (todayStats[domain].sessions || 0) + 1;
+        todayStats[domain].currentSessionTime = 0;
+        const matched = findMatchedSite(domain);
+        if (matched) achievementCheckpoints[matched] = [];
+    }
+
+    trackerState.activeTabId = tab.id;
+    trackerState.activeDomain = domain;
+    trackerState.activeFavIconUrl = tab.favIconUrl;
+    trackerState.isVideoPlaying = false;
+}
+
+async function loadDailyStats() {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const data = await chrome.storage.local.get(['currentDate', 'today_stats', 'history', 'achievement_sites', 'achievement_interval', 'achievement_limit']);
+
+    if (data.achievement_sites) achievementSites = data.achievement_sites;
+    if (data.achievement_interval) achievementInterval = parseInt(data.achievement_interval) || 30;
+    if (data.achievement_limit) achievementLimit = parseInt(data.achievement_limit) || 0;
+
+    if (data.currentDate !== todayStr) {
+        // Rotate
+        if (data.currentDate && data.today_stats) {
+            const history = data.history || {};
+            history[data.currentDate] = data.today_stats;
+            await chrome.storage.local.set({ history: history });
+        }
+        todayStats = {};
+        achievementCheckpoints = {};
+        await chrome.storage.local.set({ currentDate: todayStr, today_stats: {} });
+    } else {
+        todayStats = data.today_stats || {};
     }
 }
 
-// Check rotation every minute
-setInterval(checkAndRotateDailyStats, 60000);
+async function saveDailyStats() {
+    await chrome.storage.local.set({ today_stats: todayStats });
+}
 
-// --- Browser Time ---
-setInterval(async () => {
-    await storageMutex.lock();
-    try {
-        const data = await chrome.storage.local.get(['today_stats']);
-        let todayStats = data.today_stats || {};
+function normalizeDomain(d) {
+    return d.replace(/^www\./, '').toLowerCase();
+}
 
-        if (!todayStats.browser_time) todayStats.browser_time = 0;
-        todayStats.browser_time += 1;
+function findMatchedSite(domain) {
+    const normDomain = normalizeDomain(domain);
+    return achievementSites.find(site => {
+        const normSite = normalizeDomain(site);
+        return normDomain === normSite || normDomain.endsWith('.' + normSite);
+    });
+}
 
-        await chrome.storage.local.set({ today_stats: todayStats });
-    } finally {
-        storageMutex.unlock();
+function checkAchievements(domain, timeSeconds) {
+    const matchedSite = findMatchedSite(domain);
+    if (!matchedSite) return;
+
+    if (!achievementCheckpoints[matchedSite]) achievementCheckpoints[matchedSite] = [];
+
+    if (achievementLimit > 0 && achievementCheckpoints[matchedSite].length >= achievementLimit) {
+        return;
     }
-}, 1000);
 
-// --- Heartbeat ---
-setInterval(async () => {
-    if (activeTabId !== null && !trackingPaused) {
-        const now = Date.now();
-        const duration = (now - lastStartTime) / 1000;
+    const minutes = Math.floor(timeSeconds / 60);
+    const interval = achievementInterval > 0 ? achievementInterval : 30;
 
-        if (duration > 1) {
-            try {
-                const tab = await chrome.tabs.get(activeTabId);
-                if (tab && tab.url) {
-                    await updateTime(tab.url, duration, tab.favIconUrl, activeTabId);
-                    lastStartTime = now;
-                }
-            } catch (e) { }
+    if (minutes > 0 && minutes % interval === 0) {
+        if (!achievementCheckpoints[matchedSite].includes(minutes)) {
+            achievementCheckpoints[matchedSite].push(minutes);
+            fireAchievement(matchedSite, minutes);
         }
     }
-}, 5000);
+}
+
+const ACHIEVEMENT_MESSAGES = [
+    "You're on fire! 🔥",
+    "Absolute dedication! 🚀",
+    "Nothing can stop you now! 💪",
+    "Look at you go! ✨",
+    "Zoned in and crushing it! 🎯",
+    "Time flies when you're awesome! 🕶️",
+    "Legendary focus! 🏆",
+    "Unstoppable momentum! 🌊",
+    "Simply amazing! ⭐",
+    "Keep being a superstar! 🌟"
+];
+
+function fireAchievement(domain, minutes) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+
+    let timeStr = "";
+    if (hours > 0) timeStr += `${hours}h `;
+    if (mins > 0) timeStr += `${mins}m`;
+
+    const randomMsg = ACHIEVEMENT_MESSAGES[Math.floor(Math.random() * ACHIEVEMENT_MESSAGES.length)];
+    const tabId = trackerState.activeTabId;
+
+    if (tabId) {
+        const payload = {
+            action: 'SHOW_ACHIEVEMENT',
+            title: `Achievement Unlocked: ${domain}`,
+            message: `${timeStr} reached! ${randomMsg}`
+        };
+
+        // Attempt 1: Send Message
+        chrome.tabs.sendMessage(tabId, payload, (response) => {
+            if (chrome.runtime.lastError) {
+                // Attempt 2: Inject and Retry
+                chrome.scripting.executeScript({
+                    target: { tabId: tabId },
+                    files: ['content.js']
+                }, () => {
+                    if (!chrome.runtime.lastError) {
+                        // Retry Send
+                        setTimeout(() => {
+                            chrome.tabs.sendMessage(tabId, payload, () => { });
+                        }, 100);
+                    }
+                });
+            }
+        });
+    }
+}
+
+// Reload achievement settings if changed
+chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local') {
+        if (changes.achievement_sites) {
+            achievementSites = changes.achievement_sites.newValue || [];
+        }
+        if (changes.achievement_interval) {
+            achievementInterval = parseInt(changes.achievement_interval.newValue) || 30;
+        }
+        if (changes.achievement_limit) {
+            achievementLimit = parseInt(changes.achievement_limit.newValue) || 0;
+        }
+    }
+});

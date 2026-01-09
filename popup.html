@@ -1,67 +1,311 @@
 <!DOCTYPE html>
-<html>
+<html data-theme="default">
 
 <head>
     <title>Clicksand</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        :root,
+        [data-theme="default"] {
+            --bg-primary: #f8f9fa;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f1f3f5;
+            --text-primary: #212529;
+            --text-secondary: #495057;
+            --text-muted: #868e96;
+            --accent: #228be6;
+            --accent-hover: #1c7ed6;
+            --accent-light: rgba(34, 139, 230, 0.1);
+            --border: #e9ecef;
+            --item-bg: #ffffff;
+            --item-hover: #f8f9fa;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        [data-theme="dracula"] {
+            --bg-primary: #282a36;
+            --bg-secondary: #44475a;
+            --bg-tertiary: #6272a4;
+            --text-primary: #f8f8f2;
+            --text-secondary: #ff79c6;
+            /* Pink accent for important text */
+            --text-muted: #d0d6e0;
+            /* Very light gray for readability */
+            --accent: #bd93f9;
+            /* Purple accent */
+            --accent-hover: #ff79c6;
+            --accent-light: rgba(189, 147, 249, 0.15);
+            --border: #44475a;
+            --item-bg: #44475a;
+            --item-hover: #52556b;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        [data-theme="tokyo-night"] {
+            --bg-primary: #1a1b26;
+            --bg-secondary: #24283b;
+            --bg-tertiary: #414868;
+            --text-primary: #c0caf5;
+            --text-secondary: #7aa2f7;
+            --text-muted: #a9b1d6;
+            /* Light Lavender */
+            --accent: #7aa2f7;
+            --accent-hover: #89b4fa;
+            --accent-light: rgba(122, 162, 247, 0.15);
+            --border: #292e42;
+            --item-bg: #24283b;
+            --item-hover: #2f3549;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        [data-theme="ayu"] {
+            --bg-primary: #0b0e14;
+            --bg-secondary: #1f2430;
+            --bg-tertiary: #2d3441;
+            --text-primary: #bfbdb6;
+            --text-secondary: #e6b450;
+            --text-muted: #9ca5b4;
+            --accent: #e6b450;
+            --accent-hover: #ffc966;
+            --accent-light: rgba(230, 180, 80, 0.15);
+            --border: #2d3441;
+            --item-bg: #1f2430;
+            --item-hover: #262c3a;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        [data-theme="night-owl"] {
+            --bg-primary: #011627;
+            --bg-secondary: #0b2942;
+            --bg-tertiary: #1d3b53;
+            --text-primary: #d6deeb;
+            --text-secondary: #82aaff;
+            --text-muted: #a1aab3;
+            --accent: #c792ea;
+            --accent-hover: #dabba9;
+            --accent-light: rgba(199, 146, 234, 0.15);
+            --border: #1d3b53;
+            --item-bg: #0b2942;
+            --item-hover: #0e324e;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        [data-theme="synthwave"] {
+            --bg-primary: #262335;
+            --bg-secondary: #34294f;
+            --bg-tertiary: #495495;
+            --text-primary: #f4eee4;
+            --text-secondary: #ff7edb;
+            --text-muted: #c0c5d0;
+            --accent: #36f9f6;
+            --accent-hover: #6afffc;
+            --accent-light: rgba(54, 249, 246, 0.15);
+            --border: #495495;
+            --item-bg: #34294f;
+            --item-hover: #3e325c;
+            --shadow: 0 0 15px rgba(54, 249, 246, 0.2);
+            --shadow-hover: 0 0 25px rgba(54, 249, 246, 0.4);
+        }
+
+        [data-theme="catppuccin"] {
+            /* Catppuccin Mocha */
+            --bg-primary: #1e1e2e;
+            --bg-secondary: #181825;
+            --bg-tertiary: #11111b;
+            --text-primary: #cdd6f4;
+            --text-secondary: #bac2de;
+            --text-muted: #6c7086;
+            --accent: #cba6f7;
+            /* Mauve */
+            --accent-hover: #f5c2e7;
+            /* Pink */
+            --accent-light: rgba(203, 166, 247, 0.15);
+            --border: #313244;
+            --item-bg: #181825;
+            --item-hover: #313244;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        [data-theme="comfy"] {
+            /* Comfy (Rose Pine Moon inspired) */
+            --bg-primary: #232136;
+            --bg-secondary: #2a273f;
+            --bg-tertiary: #393552;
+            --text-primary: #e0def4;
+            --text-secondary: #908caa;
+            --text-muted: #6e6a86;
+            --accent: #ea9a97;
+            /* Rose */
+            --accent-hover: #c4a7e7;
+            /* Iris */
+            --accent-light: rgba(234, 154, 151, 0.15);
+            --border: #44415a;
+            --item-bg: #2a273f;
+            --item-hover: #393552;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        [data-theme="lucid"] {
+            /* Spicetify Lucid - Clean, Dark, Glassy */
+            --bg-primary: #121212;
+            --bg-secondary: #1e1e1e;
+            --bg-tertiary: #2a2a2a;
+            --text-primary: #ffffff;
+            --text-secondary: #b3b3b3;
+            --text-muted: #535353;
+            --accent: #70a1ff;
+            /* Lucid Blue */
+            --accent-hover: #1ed760;
+            /* Spotify Green */
+            --accent-light: rgba(112, 161, 255, 0.15);
+            --border: #333333;
+            --item-bg: #1e1e1e;
+            --item-hover: #282828;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            --shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.6);
+        }
+
         body {
-            width: 400px;
-            /* Wider for chart */
-            font-family: 'Segoe UI', sans-serif;
+            width: 500px;
+            height: 600px;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             padding: 0;
             margin: 0;
-            background-color: #f5f5f5;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            overflow-y: auto;
+        }
+
+        body.compact {
+            width: 360px;
+            min-height: auto;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--text-muted);
+            border-radius: 4px;
+            opacity: 0.5;
+            border: 2px solid var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
         }
 
         header {
-            background-color: #fff;
-            padding: 15px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            background-color: var(--bg-secondary);
+            padding: 15px 20px;
+            box-shadow: 0 1px 0 var(--border);
             position: sticky;
             top: 0;
-            z-index: 10;
+            z-index: 100;
         }
 
         .tabs {
             display: flex;
             justify-content: center;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 8px;
+            margin-bottom: 20px;
+            background: var(--bg-tertiary);
+            padding: 4px;
+            border-radius: 12px;
+            width: fit-content;
+            margin: 0 auto 20px auto;
         }
 
+
         .tab {
-            padding: 6px 16px;
+            padding: 8px 16px;
             cursor: pointer;
-            border-radius: 20px;
-            background: #eee;
+            border-radius: 8px;
+            background: transparent;
             font-size: 13px;
-            font-weight: 500;
-            color: #666;
-            transition: all 0.2s;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
 
         .tab.active {
-            background: #2196F3;
-            color: white;
-            box-shadow: 0 2px 5px rgba(33, 150, 243, 0.3);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         #browser-time-container {
             text-align: center;
-            margin-bottom: 10px;
-            padding: 10px;
-            background: #e3f2fd;
-            border-radius: 8px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: var(--item-bg);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
         }
 
         #chart-container {
+            background-color: var(--item-bg);
+            margin: 10px 20px;
+            border-radius: 16px;
+            padding: 15px;
+            min-height: 200px;
             position: relative;
-            height: 200px;
-            width: 100%;
             display: flex;
             justify-content: center;
             align-items: center;
-            margin: 10px 0;
+            gap: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        #chart-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 11px;
+            max-width: 180px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+
+        .legend-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-primary);
+        }
+
+        .legend-time {
+            color: var(--text-muted);
+            margin-left: auto;
+            font-weight: 500;
         }
 
         canvas {
@@ -89,18 +333,17 @@
         .item {
             display: flex;
             align-items: center;
-            background: white;
+            background: var(--item-bg);
             padding: 10px;
             border-radius: 8px;
-            border: 1px solid #eee;
+            border: 1px solid var(--border);
             transition: all 0.2s ease;
         }
 
         .item:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            border-color: #e0e0e0;
-            background-color: #fafafa;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            background: var(--item-hover);
         }
 
         .icon {
@@ -113,7 +356,7 @@
         .domain {
             flex-grow: 1;
             font-size: 14px;
-            color: #333;
+            color: var(--text-primary);
             font-weight: 500;
             white-space: nowrap;
             overflow: hidden;
@@ -122,7 +365,7 @@
 
         .time {
             font-weight: 600;
-            color: #2196F3;
+            color: var(--accent);
             font-size: 13px;
             min-width: 60px;
             text-align: right;
@@ -131,22 +374,85 @@
         .footer {
             padding: 15px;
             text-align: center;
-            border-top: 1px solid #ddd;
-            background: #fff;
+            border-top: 1px solid var(--border);
+            background: var(--bg-secondary);
         }
 
-        button#export-btn {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
+        /* Buttons (Shared Style) */
+        .btn-primary,
+        .btn-secondary,
+        button#export-btn,
+        button#cat-save-btn,
+        button#save-achievements-btn,
+        button#test-achievement-btn {
+            padding: 10px 16px;
+            border-radius: 8px;
             font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
+        .btn-primary,
+        button#cat-save-btn,
+        button#save-achievements-btn,
+        button#export-btn {
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+            color: white;
+        }
+
+        .btn-primary:hover,
+        button#cat-save-btn:hover,
+        button#save-achievements-btn:hover,
         button#export-btn:hover {
-            background: #45a049;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--accent-light);
+            filter: brightness(1.1);
+        }
+
+        .btn-secondary,
+        button#test-achievement-btn {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover,
+        button#test-achievement-btn:hover {
+            background: var(--border);
+        }
+
+        button#reset-achievements-btn {
+            transition: all 0.2s;
+        }
+
+        button#reset-achievements-btn:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+
+        /* Inputs & Selects */
+        input[type="text"],
+        input[type="number"],
+        select,
+        textarea {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-light);
         }
 
         .hidden {
@@ -154,40 +460,111 @@
         }
 
         .section-title {
+            padding: 0 20px;
             font-size: 11px;
+            letter-spacing: 0.5px;
             text-transform: uppercase;
-            color: #888;
-            margin-bottom: 5px;
-            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 700;
         }
 
-        /* TOOLTIP STYLE (Speech Bubble) */
+        /* Tooltip */
         #tooltip {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.98);
-            color: #333;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            backdrop-filter: blur(4px);
+            border: none;
             padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
+            font-weight: 500;
+            border-radius: 6px;
             pointer-events: none;
             display: none;
             z-index: 1000;
-            white-space: nowrap;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-            border: 1px solid #eee;
+            position: absolute;
         }
 
-        /* Arrow */
         #tooltip::after {
-            content: '';
+            display: none;
+        }
+
+        /* Remove old arrow */
+
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .switch .slider {
             position: absolute;
-            top: 100%;
-            /* Bottom of tooltip */
-            left: 50%;
-            margin-left: -6px;
-            border-width: 6px;
-            border-style: solid;
-            border-color: white transparent transparent transparent;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--border);
+            /* Use border color for inactive */
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .switch .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .switch input:checked+.slider {
+            background-color: var(--accent);
+        }
+
+        .switch input:checked+.slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Range Slider */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            width: 100%;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            outline: none;
+            margin: 10px 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--accent);
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
         }
     </style>
 </head>
@@ -199,25 +576,196 @@
             <div class="tab active" data-view="today">Today</div>
             <div class="tab" data-view="weekly">Weekly</div>
             <div class="tab" data-view="monthly">Monthly</div>
+            <div class="tab" data-view="settings" title="Settings">Settings</div>
         </div>
 
         <div id="browser-time-container">
-            <div style="font-size:12px; color:#555;">Total Browser Time</div>
-            <div id="total-browser-time" style="font-size:18px; font-weight:bold; color:#1565C0;">0s</div>
+            <div style="font-size:12px; color:var(--text-secondary);">Total Browser Time</div>
+            <div id="total-browser-time" style="font-size:18px; font-weight:bold; color:var(--accent);">0s</div>
+        </div>
+
+        <!-- Sorting Options -->
+        <div id="sort-container" style="display: flex; justify-content: center; gap: 10px; margin-bottom: 10px;">
+            <span style="font-size: 11px; color: var(--text-muted); align-self: center;">Sort by:</span>
+            <select id="sort-select"
+                style="font-size: 11px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                <option value="time-desc">Time (High to Low)</option>
+                <option value="time-asc">Time (Low to High)</option>
+                <option value="sessions-desc">Sessions (High to Low)</option>
+                <option value="sessions-asc">Sessions (Low to High)</option>
+                <option value="name-asc">Name (A-Z)</option>
+                <option value="name-desc">Name (Z-A)</option>
+            </select>
         </div>
 
         <div id="chart-container">
             <canvas id="timeChart"></canvas>
+            <div id="chart-legend"></div>
             <canvas id="weeklyChart" class="hidden"></canvas>
         </div>
+
+        <!-- Settings Panel (hidden by default) -->
+        <div id="settings-panel" class="hidden"
+            style="padding: 15px; background: var(--bg-secondary); margin: 10px; border-radius: 8px; border: 1px solid var(--border);">
+            <div class="section-title" style="margin-bottom: 15px; color: var(--text-primary);">Video Budget</div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span style="font-size: 14px; color: var(--text-primary);">Enable Video Limit</span>
+                <label class="switch">
+                    <input type="checkbox" id="video-budget-toggle">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+
+            <div id="budget-limit-section" style="opacity: 0.5;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 13px; color: var(--text-muted);">Daily Limit</span>
+                    <span id="budget-limit-display" style="font-size: 13px; font-weight: 600; color: var(--accent);">1h
+                        0m</span>
+                </div>
+                <input type="range" id="video-budget-slider" min="15" max="480" value="60" style="width: 100%;">
+                <div
+                    style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 4px;">
+                    <span>15m</span>
+                    <span>8h</span>
+                </div>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;">
+
+            <!-- Theme Selector -->
+            <div class="section-title" style="margin-bottom: 10px;">Appearance</div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span style="font-size: 14px; color: var(--text-primary);">Theme</span>
+                <select id="theme-select"
+                    style="font-size: 12px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary);">
+                    <option value="default">Default (Light)</option>
+                    <option value="dracula">Dracula</option>
+                    <option value="tokyo-night">Tokyo Night</option>
+                    <option value="catppuccin">Catppuccin Mocha</option>
+                    <option value="comfy">Comfy (Rose Pine)</option>
+                    <option value="lucid">Lucid (Dark Glass)</option>
+                    <option value="ayu">Ayu</option>
+                    <option value="night-owl">Night Owl</option>
+                    <option value="synthwave">Synthwave '84</option>
+                </select>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-label">Manage Categories</div>
+                <div class="setting-desc">Set custom category for domains</div>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <input type="text" id="cat-domain" placeholder="Domain (e.g. youtube.com)"
+                        style="flex:1; padding:8px; border:1px solid #ddd; border-radius:6px;">
+                    <select id="cat-select" style="padding:8px; border:1px solid #ddd; border-radius:6px;">
+                        <option value="work">Work</option>
+                        <option value="distraction">Distraction</option>
+                        <option value="neutral">Neutral</option>
+                    </select>
+                </div>
+                <button id="cat-save-btn" class="btn-primary" style="margin-top:10px; width:100%;">Set Category</button>
+            </div>
+
+            <div class="setting-group" style="margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">
+                <div class="setting-label">Achievement Sites</div>
+                <div class="setting-desc">Get notified when you spend time on these sites. One domain per line.</div>
+
+                <div
+                    style="margin-top:10px; margin-bottom:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:5px;">
+                        <span style="font-size:12px; color:var(--text-secondary);">Interval (min):</span>
+                        <input type="number" id="achievement-interval" min="1" value="30"
+                            style="width:50px; padding:6px; border:1px solid var(--border); border-radius:4px;">
+                    </div>
+                    <div style="display:flex; align-items:center; gap:5px;">
+                        <span style="font-size:12px; color:var(--text-secondary);">Limit (0=Unl):</span>
+                        <input type="number" id="achievement-limit" min="0" value="0"
+                            style="width:50px; padding:6px; border:1px solid var(--border); border-radius:4px;">
+                    </div>
+                </div>
+
+                <textarea id="achievement-sites-input" rows="4" placeholder="youtube.com&#10;reddit.com"
+                    style="width:100%; margin-top:10px; padding:8px; border:1px solid var(--border); border-radius:6px; font-family:sans-serif; background: var(--bg-primary); color: var(--text-primary);"></textarea>
+                <div style="display:flex; gap:10px; margin-top:10px; align-items: stretch;">
+                    <button id="save-achievements-btn" class="btn-primary" style="flex:1;">Save Achievements</button>
+                    <button id="test-achievement-btn" class="btn-secondary" style="width:60px;">Test</button>
+                    <button id="reset-achievements-btn"
+                        style="background:#ef5350; color:white; border:none; border-radius:4px; padding:0 10px; cursor:pointer; font-size:12px;">Reset</button>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 14px; color: var(--text-primary);">Compact Mode</span>
+                <label class="switch">
+                    <input type="checkbox" id="compact-toggle">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+
+            <div class="setting-group" style="margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">
+                <div class="setting-label" style="color:#ef5350;">Danger Zone</div>
+                <div class="setting-desc">Irreversibly delete all tracking history and progress.</div>
+                <button id="reset-data-btn" style="
+                    width:100%; 
+                    margin-top:10px; 
+                    padding:10px; 
+                    background:rgba(239, 83, 80, 0.1); 
+                    border:1px solid #ef5350; 
+                    color:#ef5350; 
+                    border-radius:8px; 
+                    font-weight:600; 
+                    cursor:pointer;
+                    transition:all 0.2s;">
+                    Reset All Progress
+                </button>
+            </div>
+        </div>
     </header>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmation-modal" class="hidden" style="
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+        background: rgba(0,0,0,0.7); z-index: 2000; 
+        display: flex; align-items: center; justify-content: center;
+        backdrop-filter: blur(2px);">
+        <div style="
+            background: var(--bg-secondary); 
+            padding: 20px; 
+            border-radius: 12px; 
+            width: 80%; 
+            max-width: 300px; 
+            border: 1px solid var(--border); 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            text-align: center;">
+            <div style="font-size: 16px; font-weight: bold; color: var(--text-primary); margin-bottom: 10px;">Are you
+                sure?</div>
+            <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+                This will delete <b>ALL</b> your tracked history and achievements. This action cannot be undone.
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button id="cancel-reset-btn" class="btn-secondary" style="flex: 1;">Cancel</button>
+                <button id="confirm-reset-btn" style="
+                    flex: 1; 
+                    background: #ef5350; 
+                    color: white; 
+                    border: none; 
+                    border-radius: 8px; 
+                    font-weight: 600; 
+                    cursor: pointer; 
+                    padding: 10px;">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
 
     <div id="pinned-container">
         <div class="section-title">Pinned</div>
         <div id="pinned-list"></div>
     </div>
 
-    <div style="padding: 15px 15px 0 15px;">
+    <div data-section="all-sites" style="padding: 15px 15px 0 15px;">
         <div class="section-title">All Sites</div>
     </div>
     <div id="stats-list">
@@ -231,6 +779,7 @@
         <button id="export-btn">Download CSV Report</button>
     </div>
 
+    <script src="categories.js"></script>
     <script src="popup.js"></script>
 </body>
 
