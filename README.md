@@ -52,5 +52,3 @@ Features a beautiful, premium dark-mode UI with gamified achievements to keep yo
 *   **Chart.js**: For beautiful data visualization.
 
 ---
-
-*Made with ❤️ by Aditya Vyas*
