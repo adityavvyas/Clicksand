@@ -227,8 +227,21 @@ async function loadData(view) {
         }
 
         // Always fetch history (active or not, we might need it)
-        const hData = await chrome.storage.local.get(['history']);
-        const history = hData.history || {};
+        // REFACTOR: Load from split keys + legacy fallback
+        const allData = await chrome.storage.local.get(null);
+        const history = {};
+
+        for (const [key, val] of Object.entries(allData)) {
+            // New format: history_YYYY-MM-DD
+            if (key.startsWith('history_')) {
+                const date = key.replace('history_', '');
+                history[date] = val;
+            }
+            // Legacy fall-back (if migration failed or mixed state)
+            else if (key === 'history') {
+                Object.assign(history, val);
+            }
+        }
 
         if (view === 'weekly') {
             const aggregated = aggregateWeekly(history, liveToday);

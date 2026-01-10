@@ -22,10 +22,25 @@ const CONFIG = {
 // --- Initialization ---
 (async () => {
     // 1. Data Migration / Reset (Fresh Start)
-    const resetCheck = await chrome.storage.local.get(['has_reset_v2']);
+    // 1. Data Migration / Reset (Fresh Start)
+    const resetCheck = await chrome.storage.local.get(['has_reset_v2', 'migrated_to_v3']);
+    
+    // Fresh Install / Factory Reset
     if (!resetCheck.has_reset_v2) {
         await chrome.storage.local.clear();
-        await chrome.storage.local.set({ has_reset_v2: true });
+        await chrome.storage.local.set({ has_reset_v2: true, migrated_to_v3: true });
+    } else if (!resetCheck.migrated_to_v3) {
+        // MIGRATION: Split 'history' object into separate keys 'history_YYYY-MM-DD'
+        const data = await chrome.storage.local.get(['history']);
+        if (data.history) {
+            const updates = {};
+            for (const [date, stats] of Object.entries(data.history)) {
+                updates[`history_${date}`] = stats;
+            }
+            await chrome.storage.local.set(updates);
+            await chrome.storage.local.remove('history');
+        }
+        await chrome.storage.local.set({ migrated_to_v3: true });
     }
 
     // 2. Load data
@@ -189,9 +204,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Reset Achievement Checkpoints
         for (const key in achievementCheckpoints) delete achievementCheckpoints[key];
 
-        // Clear Storage
-        chrome.storage.local.remove(['today_stats', 'history'], () => {
-            sendResponse({ success: true });
+        // Clear Storage (All history keys + today_stats + history legacy)
+        chrome.storage.local.get(null, (allData) => {
+            const keysToRemove = Object.keys(allData).filter(k => 
+                k.startsWith('history_') || k === 'today_stats' || k === 'history'
+            );
+            chrome.storage.local.remove(keysToRemove, () => {
+                sendResponse({ success: true });
+            });
         });
 
         // Re-init current active tab stats immediately so we don't crash
@@ -257,19 +277,19 @@ async function updateActiveTab(tab) {
 
 async function loadDailyStats() {
     const todayStr = new Date().toISOString().split('T')[0];
-    const data = await chrome.storage.local.get(['currentDate', 'today_stats', 'history', 'achievement_sites', 'achievement_interval', 'achievement_limit']);
+    const data = await chrome.storage.local.get(['currentDate', 'today_stats', 'achievement_sites', 'achievement_interval', 'achievement_limit']);
 
     if (data.achievement_sites) achievementSites = data.achievement_sites;
     if (data.achievement_interval) achievementInterval = parseInt(data.achievement_interval) || 30;
     if (data.achievement_limit) achievementLimit = parseInt(data.achievement_limit) || 0;
 
     if (data.currentDate !== todayStr) {
-        // Rotate
+        // Rotate: Save yesterday's stats to a stable key
         if (data.currentDate && data.today_stats) {
-            const history = data.history || {};
-            history[data.currentDate] = data.today_stats;
-            await chrome.storage.local.set({ history: history });
+            const key = `history_${data.currentDate}`;
+            await chrome.storage.local.set({ [key]: data.today_stats });
         }
+        
         todayStats = {};
         achievementCheckpoints = {};
         await chrome.storage.local.set({ currentDate: todayStr, today_stats: {} });

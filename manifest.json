@@ -10,7 +10,8 @@
     "idle",
     "notifications",
     "alarms",
-    "scripting"
+    "scripting",
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "<all_urls>"
