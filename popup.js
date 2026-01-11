@@ -28,51 +28,63 @@ function initTabs() {
     const tabs = document.querySelectorAll('.tab');
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            currentView = tab.dataset.view;
+            // function to update DOM
+            const updateDOM = () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentView = tab.dataset.view;
 
-            const f = document.getElementById('monthly-footer');
-            if (f) f.classList.toggle('hidden', currentView !== 'monthly');
+                const f = document.getElementById('monthly-footer');
+                if (f) f.classList.toggle('hidden', currentView !== 'monthly');
 
-            const tc = document.getElementById('timeChart');
-            const wc = document.getElementById('weeklyChart');
-            const sp = document.getElementById('settings-panel');
-            const cc = document.getElementById('chart-container');
-            const bc = document.getElementById('browser-time-container');
-            const pc = document.getElementById('pinned-container');
-            const sl = document.getElementById('stats-list');
-            const sc = document.getElementById('sort-container');
-            const lg = document.getElementById('chart-legend');
-            const allSitesTitle = document.querySelector('[data-section="all-sites"]');
+                const tc = document.getElementById('timeChart');
+                const wc = document.getElementById('weeklyChart');
+                const sp = document.getElementById('settings-panel');
+                const cc = document.getElementById('chart-container');
+                const bc = document.getElementById('browser-time-container');
+                const pc = document.getElementById('pinned-container');
+                const sl = document.getElementById('stats-list');
+                const sc = document.getElementById('sort-container');
+                const lg = document.getElementById('chart-legend');
+                const allSitesTitle = document.querySelector('[data-section="all-sites"]');
 
-            // Settings view handling
-            if (currentView === 'settings') {
-                if (sp) sp.classList.remove('hidden');
-                if (cc) cc.classList.add('hidden');
-                if (bc) bc.classList.add('hidden');
-                if (pc) pc.classList.add('hidden');
-                if (sl) sl.classList.add('hidden');
-                if (sc) sc.classList.add('hidden');
-                if (lg) lg.classList.add('hidden');
-                if (allSitesTitle) allSitesTitle.classList.add('hidden');
-                return;
+                // Settings view handling
+                if (currentView === 'settings') {
+                    if (sp) sp.classList.remove('hidden');
+                    if (cc) cc.classList.add('hidden');
+                    if (bc) bc.classList.add('hidden');
+                    if (pc) pc.classList.add('hidden');
+                    if (sl) sl.classList.add('hidden');
+                    if (sc) sc.classList.add('hidden');
+                    if (lg) lg.classList.add('hidden');
+                    if (allSitesTitle) allSitesTitle.classList.add('hidden');
+                } else {
+                    // Restore all visibility when leaving settings
+                    if (sp) sp.classList.add('hidden');
+                    if (cc) cc.classList.remove('hidden');
+                    if (bc) bc.classList.remove('hidden');
+                    if (sl) sl.classList.remove('hidden');
+                    if (sc) sc.classList.remove('hidden');
+                    if (lg) lg.classList.remove('hidden');
+                    if (allSitesTitle) allSitesTitle.classList.remove('hidden');
+                    if (pc) pc.classList.remove('hidden');
+                }
+
+                if (tc) tc.classList.toggle('hidden', currentView === 'weekly');
+                if (wc) wc.classList.toggle('hidden', currentView !== 'weekly');
+
+                // Re-load data so charts animate if needed (though they are canvas)
+                loadData(currentView);
+            };
+
+            // Use View Transitions API if available
+            if (document.startViewTransition) {
+                document.startViewTransition(() => {
+                    updateDOM();
+                });
             } else {
-                // Restore all visibility when leaving settings
-                if (sp) sp.classList.add('hidden');
-                if (cc) cc.classList.remove('hidden');
-                if (bc) bc.classList.remove('hidden');
-                if (sl) sl.classList.remove('hidden');
-                if (sc) sc.classList.remove('hidden');
-                if (lg) lg.classList.remove('hidden');
-                if (allSitesTitle) allSitesTitle.classList.remove('hidden');
-                if (pc) pc.classList.remove('hidden');
+                updateDOM();
             }
-
-            if (tc) tc.classList.toggle('hidden', currentView === 'weekly');
-            if (wc) wc.classList.toggle('hidden', currentView !== 'weekly');
-
-            loadData(currentView);
         });
     });
 

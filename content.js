@@ -1,200 +1,92 @@
-// content.js
-// Optimized version using Event Listeners + MutationObserver with fallback polling
-
+// content.js - The "Push" Engine
 (() => {
-    // Prevent duplicate injection if possible, or just Scope it.
-    // Scoping is enough to prevent 'Identifier already declared' errors.
+    // Configuration
+    const BATCH_INTERVAL_MS = 5000; // Send data every 5 seconds
+    let activityBatch = {
+        activeSeconds: 0,
+        videoSeconds: 0
+    };
 
-    // Optimized version using Event Listeners + MutationObserver + Robust Polling
+    // State Tracking
+    let lastUrl = location.href;
 
-    let isRuntimeGone = false; // Only true if chrome.runtime is undefined
-    let lastKnownState = null;
-    let lastKnownUrl = window.location.href; // Track URL for SPA navigation detection
-    let urlCheckInterval = null;
-    let pauseBuffer = 0; // Buffer to prevent flickering PAUSE states
+    // --- Core Logic: The Clock ---
+    // We tick locally. This interval lives as long as the tab is open.
+    setInterval(() => {
+        const isVideo = checkVideoPlaying();
+        const isActive = document.hasFocus(); // True only if user is interacting with THIS tab
 
-    // 1. Verify Runtime
-    if (!chrome.runtime || !chrome.runtime.sendMessage) {
-        isRuntimeGone = true;
-    }
+        if (isActive) {
+            activityBatch.activeSeconds++;
+        }
 
-    // Send state to background
-    function sendState(action, force = false) {
-        if (isRuntimeGone) return;
+        if (isVideo) {
+            activityBatch.videoSeconds++;
+        }
 
-        // Optimistic check: if we think we sent this, don't spam.
-        // But if 'force' is true (heartbeat), we send anyway.
-        if (!force && lastKnownState === action) return;
+        // --- URL Change Detection (SPA Support) ---
+        if (location.href !== lastUrl) {
+            lastUrl = location.href;
+            // Force flush on navigation so time counts towards correct URL
+            flushData();
+        }
 
+    }, 1000);
+
+    // --- Data Transmission ---
+    // Send accumulated time to Background every 5s
+    setInterval(flushData, BATCH_INTERVAL_MS);
+
+    // Also flush immediately when the user closes the tab
+    window.addEventListener('beforeunload', () => {
+        flushData();
+    });
+
+    function flushData() {
+        if (activityBatch.activeSeconds === 0 && activityBatch.videoSeconds === 0) return;
+
+        // Create a copy to send
+        const payload = { ...activityBatch, domain: location.hostname };
+
+        // Reset local counter immediately
+        activityBatch = { activeSeconds: 0, videoSeconds: 0 };
+
+        // Send to background
         try {
-            if (!chrome.runtime?.id) {
-                isRuntimeGone = true;
-                return;
-            }
-
             chrome.runtime.sendMessage({
-                action: action,
-                domain: window.location.hostname
+                action: 'LOG_TIME_BATCH',
+                data: payload
             }, (response) => {
-                // Ignore errors (like "receiving end does not exist" during SW wake-up)
-                // Do NOT disable the script. SW will wake up eventually.
+                // If specific errors occur (e.g. extension updated/reloaded), suppress them
                 if (chrome.runtime.lastError) {
-                    // console.warn("Clicksand: Msg failed, retrying next tick.");
+                    // console.log("Background sleeping, message will wake it");
                 }
             });
-
-            lastKnownState = action;
         } catch (e) {
-            // runtime might be gone
-            if (!chrome.runtime?.id) isRuntimeGone = true;
+            // Extension context invalidated (updated/removed)
         }
     }
 
-    // Check all videos and determine overall state
-    function checkAllVideos(force = false) {
-        if (isRuntimeGone) return;
-
+    // --- Helpers ---
+    function checkVideoPlaying() {
         const videos = document.querySelectorAll('video');
-        let anyPlaying = false;
-
         for (const v of videos) {
-            // Robust check: playing, not ended, has started
-            if (!v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 1) {
-                anyPlaying = true;
-                break;
+            // Check if playing, visible, and has started
+            if (!v.paused && !v.ended && v.currentTime > 0 && v.readyState > 2) {
+                return true;
             }
         }
-
-        if (anyPlaying) {
-            pauseBuffer = 0; // Reset buffer
-            const action = "VIDEO_PLAYING";
-            // FORCE heartbeat if requested
-            if (force) sendState(action, true);
-            else sendState(action, false);
-        } else {
-            // Buffer the PAUSE signal (approx 2 ticks / 2 seconds)
-            // This prevents "Ad Transition" gaps or brief buffer pauses from cutting metrics
-            if (pauseBuffer < 2) {
-                pauseBuffer++;
-                // Don't send yet, keep previous state
-            } else {
-                sendState("VIDEO_PAUSED", false);
-            }
-        }
+        return false;
     }
 
-    // Attach event listeners to a video element
-    const attachedVideos = new WeakSet();
-    function attachVideoListeners(video) {
-        if (isRuntimeGone) return;
-        if (attachedVideos.has(video)) return;
-        attachedVideos.add(video);
-
-        video.addEventListener('play', () => checkAllVideos());
-        video.addEventListener('pause', () => checkAllVideos());
-        video.addEventListener('ended', () => checkAllVideos());
-        video.addEventListener('volumechange', () => checkAllVideos());
-    }
-
-    // MutationObserver to detect dynamically added videos (SPAs like YouTube)
-    const observer = new MutationObserver((mutations) => {
-        if (isRuntimeGone) { observer.disconnect(); return; }
-        mutations.forEach(mutation => {
-            mutation.addedNodes.forEach(node => {
-                if (node.nodeName === 'VIDEO') attachVideoListeners(node);
-                if (node.querySelectorAll) {
-                    node.querySelectorAll('video').forEach(attachVideoListeners);
-                }
-            });
-        });
-    });
-
-    // Start observing
-    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
-
-    // Initial attachment for existing videos
-    document.querySelectorAll('video').forEach(attachVideoListeners);
-
-    // ROBUST Polling Loop (1s)
-    // This acts as the heartbeat generator AND the state checker
-    let tickCount = 0;
-    setInterval(() => {
-        if (isRuntimeGone) return;
-        tickCount++;
-
-        // Check state every second
-        // Force Heartbeat (send message) every 10 seconds (tick % 10 === 0)
-        // This keeps Service Worker alive
-        checkAllVideos(tickCount % 10 === 0);
-    }, 1000);
-
-    // Visibility change listener
-    document.addEventListener('visibilitychange', () => {
-        if (!isRuntimeGone) checkAllVideos();
-    });
-
-    // Initial check
-    checkAllVideos();
-
-    // --- SPA URL Change Detection ---
-    // YouTube and similar sites use History API for navigation without page reloads
-
-    function notifyUrlChange() {
-        if (isRuntimeGone) return;
-
-        const currentUrl = window.location.href;
-        if (currentUrl !== lastKnownUrl) {
-            lastKnownUrl = currentUrl;
-
-            // Reset state on navigation to be clean
-            lastKnownState = null;
-            pauseBuffer = 0;
-
-            try {
-                chrome.runtime.sendMessage({
-                    action: "URL_CHANGED",
-                    url: window.location.href,
-                    domain: window.location.hostname
-                }, () => chrome.runtime.lastError); // Consume error
-
-                // Re-scan DOM
-                setTimeout(() => {
-                    document.querySelectorAll('video').forEach(attachVideoListeners);
-                    checkAllVideos();
-                }, 1000);
-            } catch (e) { }
+    // --- Achievement Popup Listener ---
+    // Keeps the achievement UI logic you already had
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'SHOW_ACHIEVEMENT') {
+            showAchievementPopup(request.title, request.message);
+            sendResponse({ status: 'ok' });
         }
-    }
-
-    // Intercept History API pushState (used by YouTube, React Router, etc.)
-    const originalPushState = history.pushState;
-    history.pushState = function (...args) {
-        originalPushState.apply(this, args);
-        setTimeout(notifyUrlChange, 50);
-    };
-
-    // Intercept History API replaceState
-    const originalReplaceState = history.replaceState;
-    history.replaceState = function (...args) {
-        originalReplaceState.apply(this, args);
-        setTimeout(notifyUrlChange, 50);
-    };
-
-    // Handle back/forward navigation
-    window.addEventListener('popstate', () => {
-        setTimeout(notifyUrlChange, 50);
     });
-
-    // Fallback: Check URL periodically (catches edge cases)
-    setInterval(() => {
-        if (!isContextInvalid) {
-            notifyUrlChange();
-        }
-    }, 1000);
-
-    // --- Achievement Popup (Steam-Style) ---
-
-    // --- Premium Achievement Popup ---
 
     function injectAchievementStyles() {
         if (document.getElementById('clicksand-styles')) return;
@@ -332,13 +224,5 @@
             if (popup.parentElement) popup.parentElement.removeChild(popup);
         }, 6100);
     }
-
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        if (request.action === 'SHOW_ACHIEVEMENT') {
-            showAchievementPopup(request.title, request.message);
-            sendResponse({ status: 'ok' });
-        }
-        return true;
-    });
 
 })();
