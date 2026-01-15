@@ -1318,7 +1318,35 @@ async function initSettings() {
                 achievement_interval: interval,
                 achievement_limit: limit
             });
-            alert('Achievement settings saved!');
+
+            // Sync with Backend
+            try {
+                // Convert UI format (list + global settings) to Backend format (Map)
+                const achievementsConfig = {};
+                domains.forEach(domain => {
+                    achievementsConfig[domain] = {
+                        limit: limit * 60, // Minutes to Seconds
+                        interval: interval * 60, // Minutes to Seconds
+                        message: "Time Limit Reached!"
+                    };
+                });
+
+                const { userId } = await chrome.storage.local.get('userId');
+                if (userId) {
+                    await fetch('https://clicksand-production.up.railway.app/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: userId,
+                            achievements: achievementsConfig
+                        })
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to sync settings", e);
+            }
+
+            alert('Achievement settings saved & synced!');
         });
     }
 

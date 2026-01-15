@@ -301,4 +301,16 @@ app.post('/api/reset', (req, res) => {
     res.json({ success: true });
 });
 
+app.post('/api/settings', (req, res) => {
+    const { userId, achievements } = req.body;
+    if (!userId || !achievements) return res.sendStatus(400);
+
+    const userData = loadUserData(userId);
+    userData.achievements = achievements;
+
+    saveUserData(userId);
+    console.log(`Updated settings for ${userId}`);
+    res.json({ success: true });
+});
+
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${PORT}`));
