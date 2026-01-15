@@ -236,14 +236,7 @@
         </div>
     `;
 
-        // Check for fullscreen element
-        const fullscreenEl = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
-
-        if (fullscreenEl) {
-            fullscreenEl.appendChild(popup);
-        } else {
-            document.body.appendChild(popup);
-        }
+        document.body.appendChild(popup);
 
         // Remove after animation (6s)
         setTimeout(() => {

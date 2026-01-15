@@ -58,27 +58,6 @@ function loadUserData(userId) {
             const raw = fs.readFileSync(filePath, 'utf8');
             const loaded = JSON.parse(raw);
             userData = { ...userData, ...loaded };
-
-            // ADAPTER: If userData has flat lists (from popup), convert to map for logic
-            if (loaded.achievement_sites && Array.isArray(loaded.achievement_sites)) {
-                // User has "Simple Mode" settings
-                const limit = loaded.achievement_limit || 0;
-                const interval = loaded.achievement_interval || 0;
-
-                // Rebuild 'achievements' map from this list
-                userData.achievements = {};
-                loaded.achievement_sites.forEach(site => {
-                    userData.achievements[site] = {
-                        limit: limit * 60, // popup saves minutes, we need seconds? Popup saves minutes.
-                        interval: interval * 60,
-                        message: "Time Limit Reached!"
-                    };
-                });
-
-                // Note: We multiply by 60 because popup inputs are minutes, but server counts seconds.
-                // Assuming popup inputs are minutes.
-            }
-
         } catch (e) {
             console.error(`Error loading data for ${userId}`, e);
         }

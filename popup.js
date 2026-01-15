@@ -1325,20 +1325,16 @@ async function initSettings() {
     const resetBtn = document.getElementById('reset-achievements-btn');
     if (resetBtn) {
         resetBtn.addEventListener('click', async () => {
-            if (confirm("Reset achievement intervals to UNLIMITED (0)? This keeps your site list.")) {
-                // Get current sites to preserve them
-                const curr = await chrome.storage.local.get('achievement_sites');
-                const sites = curr.achievement_sites || [];
-
+            if (confirm("Reset all achievement settings?")) {
                 await chrome.storage.local.set({
-                    achievement_sites: sites,
-                    achievement_interval: 0, // 0 = Unlimited
+                    achievement_sites: [],
+                    achievement_interval: 30,
                     achievement_limit: 0
                 });
-
-                if (achIntervalInput) achIntervalInput.value = 0;
+                achInput.value = '';
+                if (achIntervalInput) achIntervalInput.value = 30;
                 if (achLimitInput) achLimitInput.value = 0;
-                alert('Intervals reset to Unlimited!');
+                alert('Settings reset!');
             }
         });
     }
