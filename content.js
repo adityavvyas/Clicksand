@@ -11,72 +11,81 @@
     let lastUrl = location.href;
 
     // --- Core Logic: The Clock ---
-    setInterval(() => {
-        const isVideo = checkVideoPlaying();
+    // --- Core Logic: The Clock ---
+    let lastTick = Date.now();
 
-        // Only track "Active Tab Time" from the main frame to avoid double counting iframes
-        // Video time can optionally be tracked from iframes if the video is there.
+    // Store last known video times to calculate delta
+    const videoStates = new Map(); // videoElement -> lastTime
+
+    setInterval(() => {
+        const now = Date.now();
+        const wallClockDelta = (now - lastTick) / 1000; // Fraction of seconds since last tick
+        lastTick = now;
+
+        const { isVideo, videoDelta } = calculateVideoProgress(wallClockDelta);
+
+        // Frame Check
         const isMainFrame = (window === window.top);
         const isActive = document.hasFocus();
 
         if (isActive && isMainFrame) {
-            activityBatch.activeSeconds++;
+            // Count wall clock time for Active
+            activityBatch.activeSeconds += 1; // 1 tick
         }
 
         if (isVideo) {
-            activityBatch.videoSeconds++;
+            // If video delta (content watched) is significantly higher than real time (speed > 1), use it.
+            // But we must report in "seconds" for the backend to add.
+            // If user watches 2s of content in 1s, we report 2s videoSeconds.
+            activityBatch.videoSeconds += videoDelta;
         }
 
         // --- URL Change Detection (SPA Support) ---
         if (location.href !== lastUrl) {
             lastUrl = location.href;
-            // Force flush on navigation so time counts towards correct URL
             flushData();
         }
 
     }, 1000);
 
-    // --- Data Transmission ---
-    // Send accumulated time to Background every 1s
-    setInterval(flushData, BATCH_INTERVAL_MS);
-
-    // Also flush immediately when the user closes the tab
-    window.addEventListener('beforeunload', () => {
-        flushData();
-    });
-
-    console.log("Clicksand: Content script loaded on " + location.hostname);
-
-    function flushData() {
-        console.log("Clicksand: Checking buffer...", { active: activityBatch.activeSeconds, video: activityBatch.videoSeconds });
-
-        if (activityBatch.activeSeconds === 0 && activityBatch.videoSeconds === 0) return;
-
-        // Create a copy to send
-        const payload = { ...activityBatch, domain: location.hostname, icon: getFavicon() };
-
-        // Reset local counter immediately
-        activityBatch = { activeSeconds: 0, videoSeconds: 0 };
-
-        console.log("Clicksand: Sending payload...", payload);
-
-        // Send to Background (Proxy)
-        try {
-            chrome.runtime.sendMessage({
-                action: 'LOG_TIME_BATCH',
-                data: payload
-            });
-        } catch (e) {
-            // Extension context invalidated
-        }
-    }
-
-    function getFavicon() {
-        const icon = document.querySelector('link[rel~="icon"]');
-        return icon ? icon.href : '';
-    }
-
     // --- Helpers ---
+    function calculateVideoProgress(limitDelta) {
+        const videos = document.querySelectorAll('video');
+        let totalVideoDelta = 0;
+        let anyPlaying = false;
+
+        for (const v of videos) {
+            if (!v.paused && !v.ended && v.readyState > 2) {
+                anyPlaying = true;
+
+                const curr = v.currentTime;
+                const prev = videoStates.get(v);
+
+                if (prev !== undefined) {
+                    let delta = curr - prev;
+                    // Sanity check: if delta is negative (seek back) or huge (seek forward), ignore
+                    // "Huge" means > speed * limitDelta + buffer. 
+                    // Let's say if > 5s jump, it's a seek.
+                    if (delta > 0 && delta < 5) {
+                        // This is valid playback
+                        // If multiple videos playing? Rare. We just take the MAX or SUM? 
+                        // Usually 1 main video. Let's take MAX to avoid double counting if duplicate streams.
+                        totalVideoDelta = Math.max(totalVideoDelta, delta);
+                    }
+                }
+                videoStates.set(v, curr);
+            } else {
+                videoStates.delete(v);
+            }
+        }
+
+        // Return 0 if no video is playing, or the calculated delta
+        // If the delta is tiny (e.g. 0.001), treat as 0? No, accumulate.
+
+        return { isVideo: anyPlaying, videoDelta: totalVideoDelta };
+    }
+
+    /*
     function checkVideoPlaying() {
         const videos = document.querySelectorAll('video');
         for (const v of videos) {
@@ -87,6 +96,7 @@
         }
         return false;
     }
+    */
 
     // --- Achievement Popup Listener ---
     // Keeps the achievement UI logic you already had

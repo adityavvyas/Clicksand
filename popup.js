@@ -148,19 +148,26 @@ function initTabs() {
 
             try {
                 // Call Backend Reset
-                await fetch('https://clicksand-production.up.railway.app/api/reset', { method: 'POST' });
+                const res = await fetch('https://clicksand-production.up.railway.app/api/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: userId })
+                });
+
+                if (!res.ok) throw new Error("Reset failed");
 
                 // Clear local caches in popup (refresh)
-                await loadData('today');
+                await initPins(); // Re-fetch, should be empty
 
                 // Show success checkmark briefly? or just hide
+                confirmBtn.innerText = "Done";
                 setTimeout(() => {
                     modal.classList.add('hidden');
                     confirmBtn.disabled = false;
                     confirmBtn.innerText = "Delete";
-                    // Maybe refreshing the view
+                    // Reload to clear all state visuals
                     window.location.reload();
-                }, 1000);
+                }, 500);
             } catch (e) {
                 console.error("Reset failed", e);
                 confirmBtn.innerText = "Error";

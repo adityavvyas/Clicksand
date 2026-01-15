@@ -66,15 +66,7 @@ function loadUserData(userId) {
     return userData;
 }
 
-function saveUserData(userId) {
-    const data = statsCache.get(userId);
-    if (!data) return;
-    try {
-        fs.writeFileSync(getDataFile(userId), JSON.stringify(data, null, 2));
-    } catch (e) {
-        console.error(`Error saving data for ${userId}`, e);
-    }
-}
+// function saveUserData moved to async implementation below
 
 function checkDateRollover(userData) {
     const nowStr = new Date().toISOString().split('T')[0];
@@ -143,13 +135,83 @@ function handleTimeBatch(batch) {
         entry.currentSessionTime += effectiveIncrement;
         entry.lastSessionUpdate = now;
 
-        checkAchievements(domain, entry, userId);
+        checkAchievements(domain, entry, userData.achievements, userId);
     }
 
     throttledSave(userId);
-    // Emit only to THIS user's socket room? 
-    // We don't have rooms yet, but we can emit with ID.
     io.emit(`stats_update_${userId}`, todayStats);
+}
+
+function checkAchievements(domain, entry, achievements, userId) {
+    if (!achievements) return;
+
+    // Check specific domain achievement
+    // Also check wildcard or categories if implemented later
+    // For now, simple domain match
+    let config = achievements[domain];
+
+    // Support subdomains if main domain has config
+    if (!config) {
+        const root = normalizeDomain(domain);
+        config = achievements[root];
+        // Iterate to find ending match if needed, but simple map lookup is faster if exact.
+        // If we want flexible matching:
+        if (!config) {
+            for (const key in achievements) {
+                if (isMatch(domain, key)) {
+                    config = achievements[key];
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!config) return;
+
+    const sessionSecs = entry.currentSessionTime;
+    const limit = config.limit || 0;
+    const interval = config.interval || 0;
+
+    if (limit > 0 && sessionSecs >= limit) {
+        // Check if already triggered
+        // We use a key like "limit_reached" or "interval_N"
+
+        let shouldTrigger = false;
+        let triggerType = "";
+
+        // Initial Limit
+        if (!entry.triggeredAchievements["limit_reached"]) {
+            shouldTrigger = true;
+            triggerType = "limit_reached";
+        }
+        // Interval checks (after limit)
+        else if (interval > 0) {
+            const timeSinceLimit = sessionSecs - limit;
+            const steps = Math.floor(timeSinceLimit / interval);
+            if (steps > 0) {
+                const stepKey = `interval_${steps}`;
+                if (!entry.triggeredAchievements[stepKey]) {
+                    shouldTrigger = true;
+                    triggerType = stepKey;
+                    // Prevent spamming active intervals? Usually we just alert once per interval boundary
+                }
+            }
+        }
+
+        if (shouldTrigger) {
+            entry.triggeredAchievements[triggerType] = true;
+
+            // Emit Event
+            io.emit(`achievement_unlocked_${userId}`, {
+                domain: domain,
+                message: config.message || "Time Limit Reached!",
+                type: 'limit'
+            });
+
+            // Also save immediately? or let throttled handle it. 
+            // Throttled is fine.
+        }
+    }
 }
 
 function saveUserData(userId) {
@@ -223,6 +285,11 @@ app.post('/api/reset', (req, res) => {
     const userData = loadUserData(userId);
     userData.todayStats = {};
     userData.history = {};
+    // Keep achievements config but reset any state if stored there? 
+    // Achievements state is in todayStats (triggeredAchievements), so clearing todayStats clears that state.
+    // userData.achievements is CONFIG. use default or keep user overrides? 
+    // Assuming we want to keep CONFIG but reset STATS.
+
     saveUserData(userId);
 
     io.emit(`stats_update_${userId}`, userData.todayStats);
