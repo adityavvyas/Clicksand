@@ -230,44 +230,62 @@ function checkAchievements(domain, entry, achievements, userId) {
     const limit = config.limit || 0;
     const interval = config.interval || 0;
 
-    if (limit > 0 && sessionSecs >= limit) {
-        // Check if already triggered
-        // We use a key like "limit_reached" or "interval_N"
+    // Trigger if:
+    // 1. Limit is set and reached (limit > 0 && sessionSecs >= limit)
+    // 2. OR Limit is NOT set (Unlimited) but Interval IS set, and we passed the interval (limit == 0 && interval > 0 && sessionSecs >= interval)
+    // Actually, if Limit is 0, we treat it as 0. 
+    // Logic: if limit > 0, we check limit. If limit == 0, we assume 'unlimited' but check intervals from 0.
 
+    // Effective Start for Intervals
+    // If limit > 0, intervals start AFTER limit.
+    // If limit == 0, intervals start AFTER 0 (every X mins).
+
+    const effectiveLimit = limit > 0 ? limit : 0;
+    const shouldCheck = (limit > 0 && sessionSecs >= limit) || (limit === 0 && interval > 0 && sessionSecs >= interval);
+
+    if (shouldCheck) {
         let shouldTrigger = false;
         let triggerType = "";
 
-        // Initial Limit
-        if (!entry.triggeredAchievements["limit_reached"]) {
+        // Initial Limit (only if real limit exists)
+        if (limit > 0 && !entry.triggeredAchievements["limit_reached"]) {
             shouldTrigger = true;
             triggerType = "limit_reached";
         }
-        // Interval checks (after limit)
         else if (interval > 0) {
-            const timeSinceLimit = sessionSecs - limit;
+            // Calculate steps past the effective limit
+            const timeSinceLimit = sessionSecs - effectiveLimit;
+            // If limit is 0, timeSinceLimit = sessionSecs.
+
             const steps = Math.floor(timeSinceLimit / interval);
             if (steps > 0) {
                 const stepKey = `interval_${steps}`;
                 if (!entry.triggeredAchievements[stepKey]) {
                     shouldTrigger = true;
+                    // If limit was 0, and we just hit first interval, step is 1.
                     triggerType = stepKey;
-                    // Prevent spamming active intervals? Usually we just alert once per interval boundary
                 }
             }
         }
 
+        // Safety: If limit=0 and we are at 1st interval, we triggered. 
+
         if (shouldTrigger) {
             entry.triggeredAchievements[triggerType] = true;
 
-            // Emit Event
+            // Customize message for interval
+            let msg = config.message || "Time Limit Reached!";
+            if (triggerType.startsWith('interval_')) {
+                const step = parseInt(triggerType.split('_')[1]);
+                const totalTimeMins = Math.floor((effectiveLimit + (step * interval)) / 60);
+                msg = `You've been here for ${totalTimeMins} minutes!`;
+            }
+
             io.emit(`achievement_unlocked_${userId}`, {
                 domain: domain,
-                message: config.message || "Time Limit Reached!",
+                message: msg,
                 type: 'limit'
             });
-
-            // Also save immediately? or let throttled handle it. 
-            // Throttled is fine.
         }
     }
 }
