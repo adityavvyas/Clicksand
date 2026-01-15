@@ -1,7 +1,7 @@
 // content.js - The "Push" Engine
 (() => {
     // Configuration
-    const BATCH_INTERVAL_MS = 5000; // Send data every 5 seconds
+    const BATCH_INTERVAL_MS = 1000; // Live updates (1s)
     let activityBatch = {
         activeSeconds: 0,
         videoSeconds: 0
@@ -11,12 +11,15 @@
     let lastUrl = location.href;
 
     // --- Core Logic: The Clock ---
-    // We tick locally. This interval lives as long as the tab is open.
     setInterval(() => {
         const isVideo = checkVideoPlaying();
-        const isActive = document.hasFocus(); // True only if user is interacting with THIS tab
 
-        if (isActive) {
+        // Only track "Active Tab Time" from the main frame to avoid double counting iframes
+        // Video time can optionally be tracked from iframes if the video is there.
+        const isMainFrame = (window === window.top);
+        const isActive = document.hasFocus();
+
+        if (isActive && isMainFrame) {
             activityBatch.activeSeconds++;
         }
 
@@ -34,7 +37,7 @@
     }, 1000);
 
     // --- Data Transmission ---
-    // Send accumulated time to Background every 5s
+    // Send accumulated time to Background every 1s
     setInterval(flushData, BATCH_INTERVAL_MS);
 
     // Also flush immediately when the user closes the tab
@@ -42,29 +45,35 @@
         flushData();
     });
 
+    console.log("Clicksand: Content script loaded on " + location.hostname);
+
     function flushData() {
+        console.log("Clicksand: Checking buffer...", { active: activityBatch.activeSeconds, video: activityBatch.videoSeconds });
+
         if (activityBatch.activeSeconds === 0 && activityBatch.videoSeconds === 0) return;
 
         // Create a copy to send
-        const payload = { ...activityBatch, domain: location.hostname };
+        const payload = { ...activityBatch, domain: location.hostname, icon: getFavicon() };
 
         // Reset local counter immediately
         activityBatch = { activeSeconds: 0, videoSeconds: 0 };
 
-        // Send to background
+        console.log("Clicksand: Sending payload...", payload);
+
+        // Send to Background (Proxy)
         try {
             chrome.runtime.sendMessage({
                 action: 'LOG_TIME_BATCH',
                 data: payload
-            }, (response) => {
-                // If specific errors occur (e.g. extension updated/reloaded), suppress them
-                if (chrome.runtime.lastError) {
-                    // console.log("Background sleeping, message will wake it");
-                }
             });
         } catch (e) {
-            // Extension context invalidated (updated/removed)
+            // Extension context invalidated
         }
+    }
+
+    function getFavicon() {
+        const icon = document.querySelector('link[rel~="icon"]');
+        return icon ? icon.href : '';
     }
 
     // --- Helpers ---
@@ -225,4 +234,41 @@
         }, 6100);
     }
 
+    // --- Socket Listeners ---
+    socket.on('achievement_unlocked', (data) => {
+        // Check if this achievement applies to ME
+        // The server sends the exact domain it tracked, but we might be on a subdomain?
+        // Actually server sends `domain` from `handleTimeBatch` which CAME from us.
+        // So straightforward match.
+        if (data.domain === location.hostname) {
+            showNotification(data.message);
+        }
+    });
+
+    // Simple UI
+    function showNotification(msg) {
+        const div = document.createElement('div');
+        div.style.position = 'fixed';
+        div.style.bottom = '20px';
+        div.style.right = '20px';
+        div.style.background = '#222';
+        div.style.color = '#fff';
+        div.style.padding = '15px 25px';
+        div.style.borderRadius = '8px';
+        div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+        div.style.zIndex = '999999';
+        div.style.fontFamily = 'Inter, sans-serif';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.border = '1px solid #444';
+        div.innerHTML = `
+            <div style="font-size: 20px; margin-right: 10px;">🏆</div>
+            <div>
+                <div style="font-weight: bold; margin-bottom: 2px;">Achievement Unlocked</div>
+                <div style="font-size: 14px; opacity: 0.8;">${msg}</div>
+            </div>
+        `;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 5000);
+    }
 })();

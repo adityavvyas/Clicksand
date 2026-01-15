@@ -1,0 +1,16 @@
+{
+  "currentDate": "2026-01-15",
+  "todayStats": {
+    "browser_time": 509,
+    "www.hotstar.com": {
+      "time": 379,
+      "video_time": 475,
+      "sessions": 1,
+      "currentSessionTime": 481,
+      "icon": "https://secure-media.hotstar.com/web-assets/prod/jhs_favicon.ico",
+      "lastActiveTime": 1768466057243,
+      "lastSessionUpdate": 1768466057243
+    }
+  },
+  "history": {}
+}

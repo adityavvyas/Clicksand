@@ -5,6 +5,7 @@ let pinnedSites = [];
 let sortOption = 'time-desc'; // Default sort: time high to low
 // Store hit regions: { type: 'rect'|'arc', x, y, w, h, cx, cy, innerRadius, outerRadius, startAngle, endAngle, data: {} }
 let chartRegions = [];
+let socket = null; // Socket.io instance
 
 // Icons
 const PIN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L12 12M12 12L19 19M12 12L5 19M12 12L12 22"></path></svg>';
@@ -18,9 +19,35 @@ async function initPins() {
     try {
         const data = await chrome.storage.local.get('pinnedSites');
         pinnedSites = data.pinnedSites || [];
+
+        // Initialize Socket
+        initSocket();
+
         loadData(currentView);
     } catch (e) {
         console.error("Error initPins", e);
+    }
+}
+
+function initSocket() {
+    try {
+        socket = io('http://localhost:3000');
+
+        socket.on('connect', () => {
+            console.log('Connected to backend');
+        });
+
+        // Listen for USER SPECIFIC updates
+        socket.on(`stats_update_${userId}`, (stats) => {
+            // Only update if we are in 'today' view to avoid jitter in historical views
+            if (currentView === 'today') {
+                // We received the new todayStats directly
+                renderViewWithData('today', { today_stats: stats }, null);
+            }
+        });
+
+    } catch (e) {
+        console.error("Socket error", e);
     }
 }
 
@@ -120,9 +147,10 @@ function initTabs() {
             confirmBtn.innerText = "Deleting...";
 
             try {
-                await chrome.runtime.sendMessage({ action: 'RESET_DATA' });
+                // Call Backend Reset
+                await fetch('http://localhost:3000/api/reset', { method: 'POST' });
 
-                // Clear local caches in popup
+                // Clear local caches in popup (refresh)
                 await loadData('today');
 
                 // Show success checkmark briefly? or just hide
@@ -223,102 +251,88 @@ function initTooltips() {
 }
 
 
-// --- DATA LOADING ---
-
+// --- API & Data ---
 async function loadData(view) {
     try {
-        // ALWAYS fetch live stats for "Today" component (Active & Video time)
-        // This ensures Weekly/Monthly views update second-by-second for today's activity.
-        let liveToday = {};
-        try {
-            liveToday = await chrome.runtime.sendMessage({ action: 'GET_LIVE_STATS' });
-        } catch (e) {
-            // Fallback if background not reachable (rare)
-            const d = await chrome.storage.local.get(['today_stats']);
-            liveToday = d.today_stats || {};
-        }
+        const res = await fetch(`http://localhost:3000/api/stats?userId=${userId}`);
+        if (!res.ok) throw new Error("Backend offline");
 
-        // Always fetch history (active or not, we might need it)
-        // REFACTOR: Load from split keys + legacy fallback
-        const allData = await chrome.storage.local.get(null);
-        const history = {};
+        const data = await res.json();
+        const liveToday = data.todayStats || {};
+        const history = data.history || {};
 
-        for (const [key, val] of Object.entries(allData)) {
-            // New format: history_YYYY-MM-DD
-            if (key.startsWith('history_')) {
-                const date = key.replace('history_', '');
-                history[date] = val;
-            }
-            // Legacy fall-back (if migration failed or mixed state)
-            else if (key === 'history') {
-                Object.assign(history, val);
-            }
-        }
-
-        if (view === 'weekly') {
-            const aggregated = aggregateWeekly(history, liveToday);
-            renderBrowserTime(aggregated.browser_time);
-
-            // Separation for rendering
-            const pinnedStats = {};
-            const otherStats = {};
-            Object.entries(aggregated).forEach(([domain, info]) => {
-                if (domain === 'browser_time') return;
-                let inf = (typeof info === 'number') ? { time: info } : info;
-                if (pinnedSites.includes(domain)) pinnedStats[domain] = inf;
-                else otherStats[domain] = inf;
-            });
-
-            renderPinned(pinnedStats);
-            await renderList(otherStats);
-            renderWeeklyChart(history, liveToday);
-            return;
-        }
-
-        if (view === 'monthly') {
-            const aggregated = aggregateMonthly(history, liveToday);
-            renderBrowserTime(aggregated.browser_time);
-
-            const pinnedStats = {};
-            const otherStats = {};
-            Object.entries(aggregated).forEach(([domain, info]) => {
-                if (domain === 'browser_time') return;
-                let inf = (typeof info === 'number') ? { time: info } : info;
-                if (pinnedSites.includes(domain)) pinnedStats[domain] = inf;
-                else otherStats[domain] = inf;
-            });
-
-            renderPinned(pinnedStats);
-            await renderList(otherStats);
-            renderChart(aggregated);
-            return;
-        }
-
-        // View === 'today' (Default)
-        renderBrowserTime(liveToday.browser_time || 0);
-
-        const pinnedStats = {};
-        const otherStats = {};
-
-        Object.entries(liveToday).forEach(([domain, info]) => {
-            if (domain === 'browser_time') return;
-            if (!info) return;
-
-            if (pinnedSites.includes(domain)) {
-                pinnedStats[domain] = info;
-            } else {
-                otherStats[domain] = info;
-            }
-        });
-
-        renderPinned(pinnedStats);
-        await renderList(otherStats);
-        renderChart(liveToday);
+        // Helper to render based on fetched data
+        renderViewWithData(view, { today_stats: liveToday, history: history }, null);
 
     } catch (e) {
         console.error("Error loadData", e);
-        document.getElementById('stats-list').innerHTML = '<div style="padding:20px; color:red;">Error loading data</div>';
+        document.getElementById('stats-list').innerHTML = '<div style="padding:20px; color:red;">State: Backend Offline<br><small>Run "npm start" in backend folder</small></div>';
     }
+}
+
+// Extracted render logic to reuse for socket updates
+function renderViewWithData(view, data, _unused) {
+    const liveToday = data.today_stats || {};
+    const history = data.history || {};
+
+    if (view === 'weekly') {
+        const aggregated = aggregateWeekly(history, liveToday);
+        renderBrowserTime(aggregated.browser_time);
+
+        const pinnedStats = {};
+        const otherStats = {};
+        Object.entries(aggregated).forEach(([domain, info]) => {
+            if (domain === 'browser_time') return;
+            let inf = (typeof info === 'number') ? { time: info } : info;
+            if (pinnedSites.includes(domain)) pinnedStats[domain] = inf;
+            else otherStats[domain] = inf;
+        });
+
+        renderPinned(pinnedStats);
+        renderList(otherStats);
+        renderWeeklyChart(history, liveToday);
+        return;
+    }
+
+    if (view === 'monthly') {
+        const aggregated = aggregateMonthly(history, liveToday);
+        renderBrowserTime(aggregated.browser_time);
+
+        const pinnedStats = {};
+        const otherStats = {};
+        Object.entries(aggregated).forEach(([domain, info]) => {
+            if (domain === 'browser_time') return;
+            let inf = (typeof info === 'number') ? { time: info } : info;
+            if (pinnedSites.includes(domain)) pinnedStats[domain] = inf;
+            else otherStats[domain] = inf;
+        });
+
+        renderPinned(pinnedStats);
+        renderList(otherStats);
+        renderChart(aggregated);
+        return;
+    }
+
+    // View === 'today'
+    renderBrowserTime(liveToday.browser_time || 0);
+
+    const pinnedStats = {};
+    const otherStats = {};
+
+    Object.entries(liveToday).forEach(([domain, info]) => {
+        if (domain === 'browser_time') return;
+        if (!info) return;
+
+        if (pinnedSites.includes(domain)) {
+            pinnedStats[domain] = info;
+        } else {
+            otherStats[domain] = info;
+        }
+    });
+
+    renderPinned(pinnedStats);
+    renderList(otherStats);
+    renderChart(liveToday);
 }
 
 
@@ -789,8 +803,17 @@ function renderChart(stats) {
     const chartStats = { ...stats };
     delete chartStats.browser_time;
 
-    const sorted = Object.entries(chartStats).sort((a, b) => (b[1].time || 0) - (a[1].time || 0));
-    const total = sorted.reduce((sum, item) => sum + (item[1].time || 0), 0);
+    // Use Max(active, video) for the chart value
+    const sorted = Object.entries(chartStats).sort((a, b) => {
+        const valA = Math.max(a[1].time || 0, a[1].video_time || 0);
+        const valB = Math.max(b[1].time || 0, b[1].video_time || 0);
+        return valB - valA;
+    });
+
+    const total = sorted.reduce((sum, item) => {
+        const val = Math.max(item[1].time || 0, item[1].video_time || 0);
+        return sum + val;
+    }, 0);
 
     const center = size / 2;
     const radius = 65;
@@ -828,7 +851,7 @@ function renderChart(stats) {
     const usedColors = new Set();
 
     topItems.forEach((item, index) => {
-        const t = item[1].time || 0;
+        const t = Math.max(item[1].time || 0, item[1].video_time || 0);
         const sliceAngle = (t / total) * 2 * Math.PI;
         // Use Smart Brand Color
         const color = getSiteColor(item[0], usedColors);
@@ -1353,10 +1376,8 @@ async function initSettings() {
                     // Short delay for script to initialize
                     await new Promise(r => setTimeout(r, 100));
                     await attemptSend();
-                    console.log("Re-injection successful!");
                 } catch (retryError) {
-                    console.error("Retry failed:", retryError);
-                    alert("Could not prompt page even after re-injection.\n\nPlease RELOAD the web page and try again.");
+                    console.log("Retry failed");
                 }
             }
         });
@@ -1369,10 +1390,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!chrome.storage || !chrome.storage.local) {
             throw new Error("Storage permission missing or API unavailable");
         }
+
+        // Get User ID
+        const res = await chrome.storage.local.get('userId');
+        userId = res.userId;
+        if (!userId) {
+            userId = crypto.randomUUID();
+            await chrome.storage.local.set({ userId });
+        }
+        console.log("Popup User ID:", userId);
+
+        initSocket();
+
         initTabs();
         await initPins();
         initTooltips();
         await initSettings();
+
+        loadData(currentView);
 
         // Live update: refresh every 1 second for real-time tracking display
         setInterval(() => {
@@ -1380,11 +1415,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 loadData(currentView);
             }
         }, 1000);
+
     } catch (e) {
-        console.error("Popup initialization failed:", e);
+        console.error("Init Error", e);
         document.body.innerHTML = `<div style="padding:20px; color:red; text-align:center;">
-            <h3>Extension Error</h3>
-            <p>${e.message}</p>
-        </div>`;
+                <h3>Extension Error</h3>
+                <p>${e.message}</p>
+            </div>`;
     }
 });
