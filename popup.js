@@ -1328,11 +1328,11 @@ async function initSettings() {
             if (confirm("Reset all achievement settings?")) {
                 await chrome.storage.local.set({
                     achievement_sites: [],
-                    achievement_interval: 30,
+                    achievement_interval: 0,
                     achievement_limit: 0
                 });
                 achInput.value = '';
-                if (achIntervalInput) achIntervalInput.value = 30;
+                if (achIntervalInput) achIntervalInput.value = 0;
                 if (achLimitInput) achLimitInput.value = 0;
                 alert('Settings reset!');
             }

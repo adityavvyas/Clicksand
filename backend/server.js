@@ -259,8 +259,13 @@ app.post('/api/heartbeat', (req, res) => {
 });
 
 app.post('/api/log', (req, res) => {
-    handleTimeBatch(req.body);
-    res.json({ success: true });
+    try {
+        handleTimeBatch(req.body);
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Error processing batch:", e);
+        res.status(500).json({ error: "Internal Error" });
+    }
 });
 
 app.get('/api/stats', (req, res) => {

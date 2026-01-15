@@ -236,7 +236,9 @@
         </div>
     `;
 
-        document.body.appendChild(popup);
+        // Support Fullscreen: Append to the fullscreen element if it exists
+        const target = document.fullscreenElement || document.body;
+        target.appendChild(popup);
 
         // Remove after animation (6s)
         setTimeout(() => {
