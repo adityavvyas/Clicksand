@@ -1,6 +1,11 @@
-// background.js - Proxy to Local Backend & Identity Manager
+try {
+    importScripts('socket.io.min.js');
+} catch (e) {
+    console.error(e);
+}
 
 let userId = null;
+let socket = null;
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log("Clicksand Proxy Installed");
@@ -13,13 +18,43 @@ function ensureUserId() {
         if (res.userId) {
             userId = res.userId;
             console.log("Identity Loaded:", userId);
+            connectSocket();
         } else {
             userId = crypto.randomUUID();
             chrome.storage.local.set({ userId: userId });
             console.log("Identity Generated:", userId);
+            connectSocket();
         }
     });
 }
+
+function connectSocket() {
+    if (socket) return;
+    try {
+        socket = io('https://clicksand-production.up.railway.app');
+        socket.on('connect', () => console.log("Background Socket Connected"));
+
+        // Listen for achievements
+        socket.on(`achievement_unlocked_${userId}`, (data) => {
+            console.log("Achievement Received:", data);
+
+            // Broadcast to active tab to show popup
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: 'SHOW_ACHIEVEMENT',
+                        title: "Achievement Unlocked!",
+                        message: data.message
+                    });
+                }
+            });
+        });
+
+    } catch (e) {
+        console.error("Socket Init Error:", e);
+    }
+}
+
 // Load immediately on startup
 ensureUserId();
 

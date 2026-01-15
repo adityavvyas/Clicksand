@@ -234,16 +234,7 @@
         }, 6100);
     }
 
-    // --- Socket Listeners ---
-    socket.on('achievement_unlocked', (data) => {
-        // Check if this achievement applies to ME
-        // The server sends the exact domain it tracked, but we might be on a subdomain?
-        // Actually server sends `domain` from `handleTimeBatch` which CAME from us.
-        // So straightforward match.
-        if (data.domain === location.hostname) {
-            showNotification(data.message);
-        }
-    });
+
 
     // Simple UI
     function showNotification(msg) {
