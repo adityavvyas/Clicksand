@@ -176,6 +176,7 @@
         body {
             width: 500px;
             height: 600px;
+            /* Default Fixed Height for Standard Mode */
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             padding: 0;
             margin: 0;
@@ -183,15 +184,19 @@
             color: var(--text-primary);
             transition: background-color 0.3s ease, color 0.3s ease;
             overflow-y: auto;
+            /* Allow scrolling */
         }
 
 
         /* Compact Mode Enhancements */
         body.compact {
             width: 380px !important;
-            min-height: auto;
+            height: auto !important;
+            /* Allow shrinking */
+            max-height: 600px;
+            min-height: 500px;
+            /* Ensure enough height for Modals so they don't clip! */
             border-radius: 12px;
-            /* overflow: hidden; -- REMOVED: Users need to scroll */
         }
 
         body.compact header {
