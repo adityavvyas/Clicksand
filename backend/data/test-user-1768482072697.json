@@ -1,0 +1,24 @@
+{
+  "todayStats": {
+    "test-domain.com": {
+      "time": 3,
+      "video_time": 3,
+      "sessions": 1,
+      "currentSessionTime": 3,
+      "lastActiveTime": 1768482073796,
+      "triggeredAchievements": {
+        "interval_1": true
+      },
+      "lastSessionUpdate": 1768482073796
+    }
+  },
+  "history": {},
+  "currentDate": "2026-01-15",
+  "achievements": {
+    "test-domain.com": {
+      "interval": 2,
+      "maxCount": 5,
+      "message": "Test Success!"
+    }
+  }
+}
