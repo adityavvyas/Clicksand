@@ -15,7 +15,7 @@
   ],
   "host_permissions": [
     "<all_urls>",
-    "http://localhost:3000/*"
+    "https://clicksand-production.up.railway.app/*"
   ],
   "action": {
     "default_popup": "popup.html",

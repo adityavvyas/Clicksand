@@ -31,7 +31,7 @@ async function initPins() {
 
 function initSocket() {
     try {
-        socket = io('http://localhost:3000');
+        socket = io('https://clicksand-production.up.railway.app');
 
         socket.on('connect', () => {
             console.log('Connected to backend');
@@ -148,7 +148,7 @@ function initTabs() {
 
             try {
                 // Call Backend Reset
-                await fetch('http://localhost:3000/api/reset', { method: 'POST' });
+                await fetch('https://clicksand-production.up.railway.app/api/reset', { method: 'POST' });
 
                 // Clear local caches in popup (refresh)
                 await loadData('today');
@@ -254,7 +254,7 @@ function initTooltips() {
 // --- API & Data ---
 async function loadData(view) {
     try {
-        const res = await fetch(`http://localhost:3000/api/stats?userId=${userId}`);
+        const res = await fetch(`https://clicksand-production.up.railway.app/api/stats?userId=${userId}`);
         if (!res.ok) throw new Error("Backend offline");
 
         const data = await res.json();

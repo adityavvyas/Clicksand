@@ -37,7 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const payload = { ...request.data, userId: userId };
 
         // Proxy to Server
-        fetch('http://localhost:3000/api/log', {
+        fetch('https://clicksand-production.up.railway.app/api/log', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -56,7 +56,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // We send a ping every 1 second to count "Browser Open Time"
 setInterval(() => {
     if (userId) {
-        fetch('http://localhost:3000/api/heartbeat', {
+        fetch('https://clicksand-production.up.railway.app/api/heartbeat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: userId })
