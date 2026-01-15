@@ -174,7 +174,8 @@
         }
 
         body {
-            width: 500px;
+            width: 600px;
+            /* Comfy width */
             height: 600px;
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             padding: 0;
@@ -186,11 +187,12 @@
         }
 
         body.compact {
-            width: 360px;
+            width: 400px;
+            /* Slightly wider compact */
             min-height: auto;
         }
 
-        /* Custom Scrollbar */
+        /* ... Scrollbar ... */
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -212,7 +214,8 @@
 
         header {
             background-color: var(--bg-secondary);
-            padding: 15px 20px;
+            padding: 20px 25px;
+            /* More padding */
             box-shadow: 0 1px 0 var(--border);
             position: sticky;
             top: 0;
@@ -222,22 +225,23 @@
         .tabs {
             display: flex;
             justify-content: center;
-            gap: 8px;
-            margin-bottom: 20px;
+            gap: 12px;
+            /* More gap */
+            margin-bottom: 25px;
             background: var(--bg-tertiary);
-            padding: 4px;
-            border-radius: 12px;
+            padding: 6px;
+            border-radius: 14px;
             width: fit-content;
-            margin: 0 auto 20px auto;
+            margin: 0 auto 25px auto;
         }
 
-
         .tab {
-            padding: 8px 16px;
+            padding: 10px 20px;
+            /* Larger tabs */
             cursor: pointer;
-            border-radius: 8px;
+            border-radius: 10px;
             background: transparent;
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 600;
             color: var(--text-muted);
             transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -246,128 +250,93 @@
         .tab.active {
             background: var(--bg-secondary);
             color: var(--text-primary);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
         #browser-time-container {
             text-align: center;
-            margin-bottom: 20px;
-            padding: 20px;
+            margin-bottom: 25px;
+            padding: 25px;
             background: var(--item-bg);
-            border-radius: 12px;
+            border-radius: 16px;
             box-shadow: var(--shadow);
             border: 1px solid var(--border);
         }
 
         #chart-container {
             background-color: var(--item-bg);
-            margin: 10px 20px;
-            border-radius: 16px;
-            padding: 15px;
-            min-height: 200px;
+            margin: 15px 25px;
+            border-radius: 20px;
+            padding: 20px;
+            min-height: 240px;
+            /* Larger chart */
             position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 20px;
+            gap: 25px;
             box-shadow: var(--shadow);
             border: 1px solid var(--border);
         }
 
-        #chart-legend {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            font-size: 11px;
-            max-width: 180px;
-        }
+        /* ... Legend ... */
 
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .legend-color {
-            width: 12px;
-            height: 12px;
-            border-radius: 3px;
-            flex-shrink: 0;
-        }
-
-        .legend-label {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: var(--text-primary);
-        }
-
-        .legend-time {
-            color: var(--text-muted);
-            margin-left: auto;
-            font-weight: 500;
-        }
-
-        canvas {
-            max-height: 100%;
-            max-width: 100%;
-        }
-
-        /* Pinned Section style */
         #pinned-container {
-            padding: 15px;
-            padding-bottom: 0;
+            padding: 20px 25px 0 25px;
             display: none;
-            /* Hidden by default */
         }
 
         #stats-list {
-            padding: 15px;
+            padding: 20px 25px;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 12px;
+            /* More gap between items */
             min-height: 50px;
-            /* Ensure visibility */
         }
 
         .item {
             display: flex;
             align-items: center;
             background: var(--item-bg);
-            padding: 10px;
-            border-radius: 8px;
+            padding: 16px;
+            /* Comfy padding */
+            border-radius: 12px;
+            /* Rounder */
             border: 1px solid var(--border);
             transition: all 0.2s ease;
         }
 
         .item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
             background: var(--item-hover);
         }
 
         .icon {
-            width: 20px;
-            height: 20px;
-            margin-right: 12px;
-            border-radius: 4px;
+            width: 24px;
+            /* Larger icons */
+            height: 24px;
+            margin-right: 16px;
+            border-radius: 6px;
         }
 
         .domain {
             flex-grow: 1;
-            font-size: 14px;
+            font-size: 16px;
+            /* Larger text */
             color: var(--text-primary);
-            font-weight: 500;
+            font-weight: 600;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         .time {
-            font-weight: 600;
+            font-weight: 700;
             color: var(--accent);
-            font-size: 13px;
-            min-width: 60px;
+            font-size: 14px;
+            min-width: 70px;
             text-align: right;
         }
 

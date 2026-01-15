@@ -40,15 +40,40 @@
             activityBatch.videoSeconds += videoDelta;
         }
 
-        // --- URL Change Detection (SPA Support) ---
-        if (location.href !== lastUrl) {
-            lastUrl = location.href;
+        // ... URL Change Detection or just periodic flush ...
+        // Since we want 1s updates, we flush every tick if we have data.
+        if (activityBatch.activeSeconds > 0 || activityBatch.videoSeconds > 0) {
             flushData();
         }
 
     }, 1000);
 
     // --- Helpers ---
+
+    function flushData() {
+        if (activityBatch.activeSeconds === 0 && activityBatch.videoSeconds === 0) return;
+
+        const payload = {
+            domain: window.location.hostname,
+            activeSeconds: activityBatch.activeSeconds,
+            videoSeconds: activityBatch.videoSeconds
+        };
+
+        // Reset local batch
+        activityBatch.activeSeconds = 0;
+        activityBatch.videoSeconds = 0;
+
+        // Send to Background
+        try {
+            chrome.runtime.sendMessage({
+                action: 'LOG_TIME_BATCH',
+                data: payload
+            });
+        } catch (e) {
+            // Context invalidated (extension updated/reloaded) - ignore
+        }
+    }
+
     function calculateVideoProgress(limitDelta) {
         const videos = document.querySelectorAll('video');
         let totalVideoDelta = 0;
@@ -63,13 +88,7 @@
 
                 if (prev !== undefined) {
                     let delta = curr - prev;
-                    // Sanity check: if delta is negative (seek back) or huge (seek forward), ignore
-                    // "Huge" means > speed * limitDelta + buffer. 
-                    // Let's say if > 5s jump, it's a seek.
                     if (delta > 0 && delta < 5) {
-                        // This is valid playback
-                        // If multiple videos playing? Rare. We just take the MAX or SUM? 
-                        // Usually 1 main video. Let's take MAX to avoid double counting if duplicate streams.
                         totalVideoDelta = Math.max(totalVideoDelta, delta);
                     }
                 }
@@ -79,27 +98,11 @@
             }
         }
 
-        // Return 0 if no video is playing, or the calculated delta
-        // If the delta is tiny (e.g. 0.001), treat as 0? No, accumulate.
-
         return { isVideo: anyPlaying, videoDelta: totalVideoDelta };
     }
 
-    /*
-    function checkVideoPlaying() {
-        const videos = document.querySelectorAll('video');
-        for (const v of videos) {
-            // Check if playing, visible, and has started
-            if (!v.paused && !v.ended && v.currentTime > 0 && v.readyState > 2) {
-                return true;
-            }
-        }
-        return false;
-    }
-    */
-
     // --- Achievement Popup Listener ---
-    // Keeps the achievement UI logic you already had
+    // ... rest of existing code ...
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'SHOW_ACHIEVEMENT') {
             showAchievementPopup(request.title, request.message);
