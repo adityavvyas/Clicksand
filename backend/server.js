@@ -12,43 +12,6 @@ const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-io.on('connection', (socket) => {
-    console.log('Client connected');
-
-    socket.on('update_settings', (payload) => {
-        const { userId, settings } = payload;
-        if (!userId || !settings) return;
-
-        const userData = loadUserData(userId);
-
-        // Update user data with new settings
-        if (settings.achievement_sites) userData.achievement_sites = settings.achievement_sites;
-        if (settings.achievement_interval !== undefined) userData.achievement_interval = settings.achievement_interval;
-        if (settings.achievement_limit !== undefined) userData.achievement_limit = settings.achievement_limit;
-
-        // Re-transform/Refresh the achievements map immediately
-        // Copy-paste logic from loadUserData or extract it? 
-        // For safety, let's just re-run the transform logic here or let the next load handle it.
-        // But since we modify userData in memory, we should update the map for the current session.
-        if (userData.achievement_sites && Array.isArray(userData.achievement_sites)) {
-            if (!userData.achievements) userData.achievements = {};
-            const globalInterval = parseInt(userData.achievement_interval) || 0;
-            const globalLimit = parseInt(userData.achievement_limit) || 0;
-
-            userData.achievement_sites.forEach(site => {
-                userData.achievements[site] = {
-                    limit: globalLimit * 60,
-                    interval: globalInterval * 60,
-                    message: "Time check!"
-                };
-            });
-        }
-
-        saveUserData(userId);
-        console.log(`Settings updated for ${userId}`);
-    });
-});
-
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
@@ -95,31 +58,31 @@ function loadUserData(userId) {
             const raw = fs.readFileSync(filePath, 'utf8');
             const loaded = JSON.parse(raw);
             userData = { ...userData, ...loaded };
+
+            // ADAPTER: If userData has flat lists (from popup), convert to map for logic
+            if (loaded.achievement_sites && Array.isArray(loaded.achievement_sites)) {
+                // User has "Simple Mode" settings
+                const limit = loaded.achievement_limit || 0;
+                const interval = loaded.achievement_interval || 0;
+
+                // Rebuild 'achievements' map from this list
+                userData.achievements = {};
+                loaded.achievement_sites.forEach(site => {
+                    userData.achievements[site] = {
+                        limit: limit * 60, // popup saves minutes, we need seconds? Popup saves minutes.
+                        interval: interval * 60,
+                        message: "Time Limit Reached!"
+                    };
+                });
+
+                // Note: We multiply by 60 because popup inputs are minutes, but server counts seconds.
+                // Assuming popup inputs are minutes.
+            }
+
         } catch (e) {
             console.error(`Error loading data for ${userId}`, e);
         }
     }
-
-    // --- TRANSFORM: Flat format to Map (if from client) ---
-    // Client sends: achievement_sites (Array), achievement_interval (Int), achievement_limit (Int)
-    // Server expects: achievements (Map: domain -> { limit, interval, ... })
-    if (userData.achievement_sites && Array.isArray(userData.achievement_sites)) {
-        if (!userData.achievements) userData.achievements = {};
-
-        const globalInterval = parseInt(userData.achievement_interval) || 0;
-        const globalLimit = parseInt(userData.achievement_limit) || 0;
-
-        userData.achievement_sites.forEach(site => {
-            // Apply global config to each site if not already specifically set? 
-            // Or overwrite? Let's overwrite to ensure syncing with client global settings.
-            userData.achievements[site] = {
-                limit: globalLimit * 60, // Client sends minutes, logic uses seconds
-                interval: globalInterval * 60, // Client sends minutes
-                message: "Time check!"
-            };
-        });
-    }
-
     statsCache.set(userId, userData);
     return userData;
 }
@@ -230,62 +193,44 @@ function checkAchievements(domain, entry, achievements, userId) {
     const limit = config.limit || 0;
     const interval = config.interval || 0;
 
-    // Trigger if:
-    // 1. Limit is set and reached (limit > 0 && sessionSecs >= limit)
-    // 2. OR Limit is NOT set (Unlimited) but Interval IS set, and we passed the interval (limit == 0 && interval > 0 && sessionSecs >= interval)
-    // Actually, if Limit is 0, we treat it as 0. 
-    // Logic: if limit > 0, we check limit. If limit == 0, we assume 'unlimited' but check intervals from 0.
+    if (limit > 0 && sessionSecs >= limit) {
+        // Check if already triggered
+        // We use a key like "limit_reached" or "interval_N"
 
-    // Effective Start for Intervals
-    // If limit > 0, intervals start AFTER limit.
-    // If limit == 0, intervals start AFTER 0 (every X mins).
-
-    const effectiveLimit = limit > 0 ? limit : 0;
-    const shouldCheck = (limit > 0 && sessionSecs >= limit) || (limit === 0 && interval > 0 && sessionSecs >= interval);
-
-    if (shouldCheck) {
         let shouldTrigger = false;
         let triggerType = "";
 
-        // Initial Limit (only if real limit exists)
-        if (limit > 0 && !entry.triggeredAchievements["limit_reached"]) {
+        // Initial Limit
+        if (!entry.triggeredAchievements["limit_reached"]) {
             shouldTrigger = true;
             triggerType = "limit_reached";
         }
+        // Interval checks (after limit)
         else if (interval > 0) {
-            // Calculate steps past the effective limit
-            const timeSinceLimit = sessionSecs - effectiveLimit;
-            // If limit is 0, timeSinceLimit = sessionSecs.
-
+            const timeSinceLimit = sessionSecs - limit;
             const steps = Math.floor(timeSinceLimit / interval);
             if (steps > 0) {
                 const stepKey = `interval_${steps}`;
                 if (!entry.triggeredAchievements[stepKey]) {
                     shouldTrigger = true;
-                    // If limit was 0, and we just hit first interval, step is 1.
                     triggerType = stepKey;
+                    // Prevent spamming active intervals? Usually we just alert once per interval boundary
                 }
             }
         }
 
-        // Safety: If limit=0 and we are at 1st interval, we triggered. 
-
         if (shouldTrigger) {
             entry.triggeredAchievements[triggerType] = true;
 
-            // Customize message for interval
-            let msg = config.message || "Time Limit Reached!";
-            if (triggerType.startsWith('interval_')) {
-                const step = parseInt(triggerType.split('_')[1]);
-                const totalTimeMins = Math.floor((effectiveLimit + (step * interval)) / 60);
-                msg = `You've been here for ${totalTimeMins} minutes!`;
-            }
-
+            // Emit Event
             io.emit(`achievement_unlocked_${userId}`, {
                 domain: domain,
-                message: msg,
+                message: config.message || "Time Limit Reached!",
                 type: 'limit'
             });
+
+            // Also save immediately? or let throttled handle it. 
+            // Throttled is fine.
         }
     }
 }

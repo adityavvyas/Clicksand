@@ -236,11 +236,11 @@
         </div>
     `;
 
-        // Check for Fullscreen
-        const fsElement = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
+        // Check for fullscreen element
+        const fullscreenEl = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
 
-        if (fsElement) {
-            fsElement.appendChild(popup);
+        if (fullscreenEl) {
+            fullscreenEl.appendChild(popup);
         } else {
             document.body.appendChild(popup);
         }

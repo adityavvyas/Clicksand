@@ -176,7 +176,6 @@
         body {
             width: 500px;
             height: 600px;
-            /* Default Fixed Height for Standard Mode */
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             padding: 0;
             margin: 0;
@@ -184,127 +183,16 @@
             color: var(--text-primary);
             transition: background-color 0.3s ease, color 0.3s ease;
             overflow-y: auto;
-            /* Allow scrolling */
         }
 
-
-        /* Compact Mode Enhancements */
         body.compact {
-            width: 380px !important;
-            height: auto !important;
-            /* Allow shrinking */
-            max-height: 600px;
-            min-height: 500px;
-            /* Ensure enough height for Modals so they don't clip! */
-            border-radius: 12px;
+            width: 360px;
+            min-height: auto;
         }
 
-        body.compact header {
-            padding: 10px 15px;
-        }
-
-        body.compact #browser-time-container {
-            margin-bottom: 10px;
-            padding: 15px;
-        }
-
-        /* Don't hide Tabs! Just make them compact or user gets stuck */
-        body.compact .tab {
-            padding: 4px 10px;
-            font-size: 11px;
-        }
-
-        body.compact #chart-container,
-        body.compact #sort-container {
-            display: none !important;
-            /* Hide chart/sort to save space */
-        }
-
-        body.compact #stats-list {
-            padding: 10px;
-        }
-
-        body.compact .item {
-            padding: 8px;
-            font-size: 13px;
-        }
-
-        /* --- Advanced Animations (AnimBits Inspired) --- */
-
-        /* Slide Up Entrance for List Items */
-        @keyframes slideUpFade {
-            0% {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-
-            100% {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .item {
-            animation: slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            /* Staggering can be done via JS or nth-child if static, but JS is better for dynamic lists */
-        }
-
-        /* Smooth Hover Scale for Everything */
-        .item,
-        .btn-primary,
-        .btn-secondary,
-        button {
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-        }
-
-        .item:hover {
-            transform: translateY(-2px) scale(1.01);
-            background-color: var(--item-hover);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-            z-index: 1;
-        }
-
-        /* Button Press Effect */
-        button:active {
-            transform: scale(0.96) !important;
-        }
-
-        /* Modal Blur Entrance */
-        @keyframes blurIn {
-            from {
-                backdrop-filter: blur(0);
-                background: rgba(0, 0, 0, 0);
-            }
-
-            to {
-                backdrop-filter: blur(8px);
-                background: rgba(0, 0, 0, 0.6);
-            }
-        }
-
-        #confirmation-modal {
-            animation: blurIn 0.3s forwards;
-            backdrop-filter: blur(8px);
-            /* Fallback */
-        }
-
-        #confirmation-modal>div {
-            animation: slideUpFade 0.4s 0.1s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-        }
-
-        /* Custom Scrollbar - Ensure it applies to HTML/Body */
-        html,
-        body {
-            overflow-y: overlay;
-            /* Try overlay or auto */
-            scrollbar-width: thin;
-            /* Firefox */
-            scrollbar-color: var(--text-muted) transparent;
-        }
-
+        /* Custom Scrollbar */
         ::-webkit-scrollbar {
-            width: 6px;
-            /* Thinner */
+            width: 8px;
         }
 
         ::-webkit-scrollbar-track {
@@ -315,13 +203,438 @@
             background: var(--text-muted);
             border-radius: 4px;
             opacity: 0.5;
-            border: 2px solid transparent;
-            background-clip: content-box;
-            /* Floating effect */
+            border: 2px solid var(--bg-primary);
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background-color: var(--text-secondary);
+            background: var(--text-secondary);
+        }
+
+        header {
+            background-color: var(--bg-secondary);
+            padding: 15px 20px;
+            box-shadow: 0 1px 0 var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 20px;
+            background: var(--bg-tertiary);
+            padding: 4px;
+            border-radius: 12px;
+            width: fit-content;
+            margin: 0 auto 20px auto;
+        }
+
+
+        .tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            border-radius: 8px;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .tab.active {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        #browser-time-container {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: var(--item-bg);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        #chart-container {
+            background-color: var(--item-bg);
+            margin: 10px 20px;
+            border-radius: 16px;
+            padding: 15px;
+            min-height: 200px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        #chart-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 11px;
+            max-width: 180px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+
+        .legend-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-primary);
+        }
+
+        .legend-time {
+            color: var(--text-muted);
+            margin-left: auto;
+            font-weight: 500;
+        }
+
+        canvas {
+            max-height: 100%;
+            max-width: 100%;
+        }
+
+        /* Pinned Section style */
+        #pinned-container {
+            padding: 15px;
+            padding-bottom: 0;
+            display: none;
+            /* Hidden by default */
+        }
+
+        #stats-list {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 50px;
+            /* Ensure visibility */
+        }
+
+        .item {
+            display: flex;
+            align-items: center;
+            background: var(--item-bg);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            transition: all 0.2s ease;
+        }
+
+        .item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            background: var(--item-hover);
+        }
+
+        .icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            border-radius: 4px;
+        }
+
+        .domain {
+            flex-grow: 1;
+            font-size: 14px;
+            color: var(--text-primary);
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .time {
+            font-weight: 600;
+            color: var(--accent);
+            font-size: 13px;
+            min-width: 60px;
+            text-align: right;
+        }
+
+        .footer {
+            padding: 15px;
+            text-align: center;
+            border-top: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+
+        /* Buttons (Shared Style) */
+        .btn-primary,
+        .btn-secondary,
+        button#export-btn,
+        button#cat-save-btn,
+        button#save-achievements-btn,
+        button#test-achievement-btn {
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .btn-primary,
+        button#cat-save-btn,
+        button#save-achievements-btn,
+        button#export-btn {
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+            color: white;
+        }
+
+        .btn-primary:hover,
+        button#cat-save-btn:hover,
+        button#save-achievements-btn:hover,
+        button#export-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--accent-light);
+            filter: brightness(1.1);
+        }
+
+        .btn-secondary,
+        button#test-achievement-btn {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover,
+        button#test-achievement-btn:hover {
+            background: var(--border);
+        }
+
+        button#reset-achievements-btn {
+            transition: all 0.2s;
+        }
+
+        button#reset-achievements-btn:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+
+        /* Inputs & Selects */
+        input[type="text"],
+        input[type="number"],
+        select,
+        textarea {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .section-title {
+            padding: 0 20px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        /* Tooltip */
+        #tooltip {
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            backdrop-filter: blur(4px);
+            border: none;
+            padding: 8px 12px;
+            font-weight: 500;
+            border-radius: 6px;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            position: absolute;
+        }
+
+        #tooltip::after {
+            display: none;
+        }
+
+        /* Remove old arrow */
+
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .switch .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--border);
+            /* Use border color for inactive */
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .switch .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .switch input:checked+.slider {
+            background-color: var(--accent);
+        }
+
+        .switch input:checked+.slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Range Slider */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            width: 100%;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            outline: none;
+            margin: 10px 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--accent);
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+
+        /* --- Animbits Integration --- */
+
+        /* 1. Lift Button Effect */
+        .btn-primary,
+        .btn-secondary,
+        button#export-btn,
+        button#cat-save-btn,
+        button#save-achievements-btn,
+        button#test-achievement-btn,
+        button#reset-achievements-btn,
+        button#reset-data-btn,
+        button#confirm-reset-btn,
+        button#cancel-reset-btn {
+            transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1) !important;
+            will-change: transform, box-shadow;
+        }
+
+        .btn-primary:hover,
+        button#cat-save-btn:hover,
+        button#save-achievements-btn:hover,
+        button#export-btn:hover,
+        button#confirm-reset-btn:hover {
+            transform: translateY(-4px) !important;
+            box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.2), 0 4px 12px var(--accent-light) !important;
+            filter: brightness(1.05) !important;
+        }
+
+        .btn-secondary:hover,
+        button#test-achievement-btn:hover,
+        button#cancel-reset-btn:hover {
+            transform: translateY(-4px) !important;
+            box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1) !important;
+            background: var(--border) !important;
+        }
+
+        /* 2. Page Transitions (Fade) */
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+            animation-duration: 0.3s;
+            animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        ::view-transition-old(root) {
+            animation-name: fade-out;
+        }
+
+        ::view-transition-new(root) {
+            animation-name: fade-in;
+        }
+
+        @keyframes fade-out {
+            from {
+                opacity: 1;
+            }
+
+            to {
+                opacity: 0;
+            }
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
         }
     </style>
 </head>
