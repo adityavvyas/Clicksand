@@ -37,6 +37,8 @@ function connectSocket() {
         });
         socket.on('connect', () => console.log("Background Socket Connected"));
 
+        // Achievements Listener Removed
+
     } catch (e) {
         console.error("Socket Init Error:", e);
     }

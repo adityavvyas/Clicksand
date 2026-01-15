@@ -101,30 +101,36 @@
         return { isVideo: anyPlaying, videoDelta: totalVideoDelta };
     }
 
-    // Simple UI
-    function showNotification(msg) {
-        const div = document.createElement('div');
-        div.style.position = 'fixed';
-        div.style.bottom = '20px';
-        div.style.right = '20px';
-        div.style.background = '#222';
-        div.style.color = '#fff';
-        div.style.padding = '15px 25px';
-        div.style.borderRadius = '8px';
-        div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
-        div.style.zIndex = '999999';
-        div.style.fontFamily = 'Inter, sans-serif';
-        div.style.display = 'flex';
-        div.style.alignItems = 'center';
-        div.style.border = '1px solid #444';
-        div.innerHTML = `
+    // --- Achievement Popup Removed ---
+
+})();
+
+
+
+// Simple UI
+function showNotification(msg) {
+    const div = document.createElement('div');
+    div.style.position = 'fixed';
+    div.style.bottom = '20px';
+    div.style.right = '20px';
+    div.style.background = '#222';
+    div.style.color = '#fff';
+    div.style.padding = '15px 25px';
+    div.style.borderRadius = '8px';
+    div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+    div.style.zIndex = '999999';
+    div.style.fontFamily = 'Inter, sans-serif';
+    div.style.display = 'flex';
+    div.style.alignItems = 'center';
+    div.style.border = '1px solid #444';
+    div.innerHTML = `
             <div style="font-size: 20px; margin-right: 10px;">🏆</div>
             <div>
                 <div style="font-weight: bold; margin-bottom: 2px;">Achievement Unlocked</div>
                 <div style="font-size: 14px; opacity: 0.8;">${msg}</div>
             </div>
         `;
-        document.body.appendChild(div);
-        setTimeout(() => div.remove(), 5000);
-    }
-})();
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 5000);
+}
+}) ();

@@ -1273,43 +1273,48 @@ async function initSettings() {
         }
     }
 
-    // --- BOOTSTRAP ---
-    document.addEventListener('DOMContentLoaded', async () => {
-        try {
-            if (!chrome.storage || !chrome.storage.local) {
-                throw new Error("Storage permission missing or API unavailable");
+    // --- Achievement Logic Removed ---
+
+    // const resetBtn = document.getElementById('reset-achievements-btn'); // Removed
+}
+
+// --- BOOTSTRAP ---
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        if (!chrome.storage || !chrome.storage.local) {
+            throw new Error("Storage permission missing or API unavailable");
+        }
+
+        // Get User ID
+        const res = await chrome.storage.local.get('userId');
+        userId = res.userId;
+        if (!userId) {
+            userId = crypto.randomUUID();
+            await chrome.storage.local.set({ userId });
+        }
+        console.log("Popup User ID:", userId);
+
+        initSocket();
+
+        initTabs();
+        await initPins();
+        initTooltips();
+        await initSettings();
+
+        loadData(currentView);
+
+        // Live update: refresh every 1 second for real-time tracking display
+        setInterval(() => {
+            if (currentView !== 'settings') {
+                loadData(currentView);
             }
+        }, 1000);
 
-            // Get User ID
-            const res = await chrome.storage.local.get('userId');
-            userId = res.userId;
-            if (!userId) {
-                userId = crypto.randomUUID();
-                await chrome.storage.local.set({ userId });
-            }
-            console.log("Popup User ID:", userId);
-
-            initSocket();
-
-            initTabs();
-            await initPins();
-            initTooltips();
-            await initSettings();
-
-            loadData(currentView);
-
-            // Live update: refresh every 1 second for real-time tracking display
-            setInterval(() => {
-                if (currentView !== 'settings') {
-                    loadData(currentView);
-                }
-            }, 1000);
-
-        } catch (e) {
-            console.error("Init Error", e);
-            document.body.innerHTML = `<div style="padding:20px; color:red; text-align:center;">
+    } catch (e) {
+        console.error("Init Error", e);
+        document.body.innerHTML = `<div style="padding:20px; color:red; text-align:center;">
                 <h3>Extension Error</h3>
                 <p>${e.message}</p>
             </div>`;
-        }
-    });
+    }
+});
