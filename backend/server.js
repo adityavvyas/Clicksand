@@ -24,7 +24,7 @@ const statsCache = new Map(); // userId -> { todayStats, history, currentDate }
 
 // --- Helpers ---
 function normalizeDomain(domain) {
-    return domain.replace(/^www\./, '');
+    return domain.replace(/^(?:https?:\/\/)?(?:www\.)?/i, '');
 }
 
 function isMatch(currentDomain, targetDomain) {

@@ -1299,7 +1299,8 @@ async function initSettings() {
             const raw = achInput.value;
             const domains = raw.split('\n')
                 .map(s => s.trim())
-                .filter(s => s.length > 0);
+                .filter(s => s.length > 0)
+                .map(s => s.replace(/^(?:https?:\/\/)?(?:www\.)?/i, '')); // Clean domain
 
             let interval = 30;
             if (achIntervalInput) {
