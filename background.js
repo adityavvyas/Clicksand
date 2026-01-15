@@ -31,12 +31,24 @@ function ensureUserId() {
 function connectSocket() {
     if (socket) return;
     try {
-        socket = io('https://clicksand-production.up.railway.app');
+        socket = io('https://clicksand-production.up.railway.app', {
+            transports: ['websocket', 'polling'], // Ensure compatibility
+            reconnection: true
+        });
         socket.on('connect', () => console.log("Background Socket Connected"));
 
         // Listen for achievements
         socket.on(`achievement_unlocked_${userId}`, (data) => {
             console.log("Achievement Received:", data);
+
+            // DEBUG: Native Notification to verify signal received
+            chrome.notifications.create({
+                type: 'basic',
+                iconUrl: 'icon128.png', // Ensure this exists or use default
+                title: data.title || "Achievement Unlocked!",
+                message: data.message || "Congrats!",
+                priority: 2
+            });
 
             // Broadcast to active tab to show popup
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
