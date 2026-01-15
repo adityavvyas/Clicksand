@@ -214,6 +214,10 @@ function throttledSave(userId) {
 }
 
 // --- Routes ---
+app.get('/', (req, res) => {
+    res.send('Clicksand Backend is Online! ⏳');
+});
+
 app.post('/api/heartbeat', (req, res) => {
     const userId = req.body.userId;
     if (!userId) return res.sendStatus(400);
