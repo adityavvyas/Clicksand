@@ -46,10 +46,7 @@ function loadUserData(userId) {
         todayStats: {},
         history: {},
         currentDate: new Date().toISOString().split('T')[0],
-        achievements: { // Per user config or default?
-            "youtube.com": { limit: 120, interval: 60, message: "YouTube Limit Reached!" },
-            "goclasses.in": { limit: 300, interval: 0, message: "Study Break!" }
-        }
+        currentDate: new Date().toISOString().split('T')[0]
     };
 
     const filePath = getDataFile(userId);
@@ -108,7 +105,7 @@ function handleTimeBatch(batch) {
             sessions: 0,
             currentSessionTime: 0,
             lastActiveTime: Date.now(),
-            triggeredAchievements: {}
+            lastActiveTime: Date.now()
         };
     }
 
@@ -129,170 +126,164 @@ function handleTimeBatch(batch) {
     if (effectiveIncrement > 0) {
         if (!entry.lastSessionUpdate || (now - entry.lastSessionUpdate > SESSION_TIMEOUT)) {
             entry.sessions = (entry.sessions || 0) + 1;
-            entry.currentSessionTime = 0;
-            entry.triggeredAchievements = {};
+            entry.lastSessionUpdate = now;
         }
-        entry.currentSessionTime += effectiveIncrement;
-        entry.lastSessionUpdate = now;
 
-        checkAchievements(domain, entry, userData.achievements, userId);
+        throttledSave(userId);
+        io.emit(`stats_update_${userId}`, todayStats);
     }
 
-    throttledSave(userId);
-    io.emit(`stats_update_${userId}`, todayStats);
-}
+    function checkAchievements(domain, entry, achievements, userId) {
+        if (!achievements) return;
 
-function checkAchievements(domain, entry, achievements, userId) {
-    if (!achievements) return;
+        // Check specific domain achievement
+        let config = achievements[domain];
 
-    // Check specific domain achievement
-    let config = achievements[domain];
-
-    // Support subdomains
-    if (!config) {
-        const root = normalizeDomain(domain);
-        config = achievements[root];
+        // Support subdomains
         if (!config) {
-            for (const key in achievements) {
-                if (isMatch(domain, key)) {
-                    config = achievements[key];
-                    break;
+            const root = normalizeDomain(domain);
+            config = achievements[root];
+            if (!config) {
+                for (const key in achievements) {
+                    if (isMatch(domain, key)) {
+                        config = achievements[key];
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!config) return;
+
+        const sessionSecs = entry.currentSessionTime;
+        const interval = config.interval || 0;
+        const maxCount = config.maxCount !== undefined ? config.maxCount : 0; // 0 = unlimited
+
+        if (interval > 0) {
+            // Step 1: Calculate how many intervals have been completed
+            // e.g. 60s, Interval 60s -> step 1. 119s -> step 1. 120s -> step 2.
+            const steps = Math.floor(sessionSecs / interval);
+
+            if (steps > 0) {
+                // Check Max Count (if enabled)
+                if (maxCount > 0 && steps > maxCount) {
+                    return; // Stop triggering
+                }
+
+                // Check if THIS specific step has been triggered
+                const stepKey = `interval_${steps}`;
+
+                if (!entry.triggeredAchievements[stepKey]) {
+                    // Unlock!
+                    entry.triggeredAchievements[stepKey] = true;
+
+                    io.emit(`achievement_unlocked_${userId}`, {
+                        domain: domain,
+                        message: config.message || `Streak: ${steps}x Intervals!`,
+                        type: 'streak'
+                    });
                 }
             }
         }
     }
 
-    if (!config) return;
+    function saveUserData(userId) {
+        const data = statsCache.get(userId);
+        if (!data) return;
+        // Async save to prevent blocking logic
+        const filePath = getDataFile(userId);
+        const json = JSON.stringify(data, null, 2);
+        fs.writeFile(filePath, json, (err) => {
+            if (err) console.error(`Error saving data for ${userId}`, err);
+        });
+    }
 
-    const sessionSecs = entry.currentSessionTime;
-    const interval = config.interval || 0;
-    const maxCount = config.maxCount !== undefined ? config.maxCount : 0; // 0 = unlimited
+    const saveTimeouts = new Map();
 
-    if (interval > 0) {
-        // Step 1: Calculate how many intervals have been completed
-        // e.g. 60s, Interval 60s -> step 1. 119s -> step 1. 120s -> step 2.
-        const steps = Math.floor(sessionSecs / interval);
+    function throttledSave(userId) {
+        if (saveTimeouts.has(userId)) clearTimeout(saveTimeouts.get(userId));
 
-        if (steps > 0) {
-            // Check Max Count (if enabled)
-            if (maxCount > 0 && steps > maxCount) {
-                return; // Stop triggering
-            }
+        // Create closure for specific userId
+        const timeout = setTimeout(() => {
+            saveUserData(userId);
+            saveTimeouts.delete(userId);
+        }, 2000);
 
-            // Check if THIS specific step has been triggered
-            const stepKey = `interval_${steps}`;
+        saveTimeouts.set(userId, timeout);
+    }
 
-            if (!entry.triggeredAchievements[stepKey]) {
-                // Unlock!
-                entry.triggeredAchievements[stepKey] = true;
+    // --- Routes ---
+    app.get('/', (req, res) => {
+        res.send('Clicksand Backend is Online! ⏳');
+    });
 
-                io.emit(`achievement_unlocked_${userId}`, {
-                    domain: domain,
-                    message: config.message || `Streak: ${steps}x Intervals!`,
-                    type: 'streak'
-                });
-            }
+    app.post('/api/heartbeat', (req, res) => {
+        const userId = req.body.userId;
+        if (!userId) return res.sendStatus(400);
+
+        const userData = loadUserData(userId);
+        checkDateRollover(userData);
+
+        if (!userData.todayStats['browser_time']) userData.todayStats['browser_time'] = 0;
+        userData.todayStats['browser_time'] += 1;
+
+        io.emit(`stats_update_${userId}`, userData.todayStats);
+        res.sendStatus(200);
+    });
+
+    app.post('/api/log', (req, res) => {
+        try {
+            handleTimeBatch(req.body);
+            res.json({ success: true });
+        } catch (e) {
+            console.error("Error processing batch:", e);
+            res.status(500).json({ error: "Internal Error" });
         }
-    }
-}
-
-function saveUserData(userId) {
-    const data = statsCache.get(userId);
-    if (!data) return;
-    // Async save to prevent blocking logic
-    const filePath = getDataFile(userId);
-    const json = JSON.stringify(data, null, 2);
-    fs.writeFile(filePath, json, (err) => {
-        if (err) console.error(`Error saving data for ${userId}`, err);
     });
-}
 
-const saveTimeouts = new Map();
+    app.get('/api/stats', (req, res) => {
+        const userId = req.query.userId || req.body.userId; // Allow query param for GET
+        if (!userId) {
+            return res.json({ todayStats: {}, history: {}, currentDate: new Date().toISOString().split('T')[0] });
+        }
 
-function throttledSave(userId) {
-    if (saveTimeouts.has(userId)) clearTimeout(saveTimeouts.get(userId));
+        const userData = loadUserData(userId);
+        checkDateRollover(userData);
+        res.json({
+            todayStats: userData.todayStats,
+            history: userData.history,
+            currentDate: userData.currentDate
+        });
+    });
 
-    // Create closure for specific userId
-    const timeout = setTimeout(() => {
+    app.post('/api/reset', (req, res) => {
+        const userId = req.body.userId;
+        if (!userId) return res.sendStatus(400);
+
+        const userData = loadUserData(userId);
+        userData.todayStats = {};
+        userData.history = {};
+        // Keep achievements config but reset any state if stored there? 
+        // Achievements state is in todayStats (triggeredAchievements), so clearing todayStats clears that state.
+        // userData.achievements is CONFIG. use default or keep user overrides? 
+        // Assuming we want to keep CONFIG but reset STATS.
+
         saveUserData(userId);
-        saveTimeouts.delete(userId);
-    }, 2000);
 
-    saveTimeouts.set(userId, timeout);
-}
-
-// --- Routes ---
-app.get('/', (req, res) => {
-    res.send('Clicksand Backend is Online! ⏳');
-});
-
-app.post('/api/heartbeat', (req, res) => {
-    const userId = req.body.userId;
-    if (!userId) return res.sendStatus(400);
-
-    const userData = loadUserData(userId);
-    checkDateRollover(userData);
-
-    if (!userData.todayStats['browser_time']) userData.todayStats['browser_time'] = 0;
-    userData.todayStats['browser_time'] += 1;
-
-    io.emit(`stats_update_${userId}`, userData.todayStats);
-    res.sendStatus(200);
-});
-
-app.post('/api/log', (req, res) => {
-    try {
-        handleTimeBatch(req.body);
+        io.emit(`stats_update_${userId}`, userData.todayStats);
         res.json({ success: true });
-    } catch (e) {
-        console.error("Error processing batch:", e);
-        res.status(500).json({ error: "Internal Error" });
-    }
-});
-
-app.get('/api/stats', (req, res) => {
-    const userId = req.query.userId || req.body.userId; // Allow query param for GET
-    if (!userId) {
-        return res.json({ todayStats: {}, history: {}, currentDate: new Date().toISOString().split('T')[0] });
-    }
-
-    const userData = loadUserData(userId);
-    checkDateRollover(userData);
-    res.json({
-        todayStats: userData.todayStats,
-        history: userData.history,
-        currentDate: userData.currentDate
     });
-});
 
-app.post('/api/reset', (req, res) => {
-    const userId = req.body.userId;
-    if (!userId) return res.sendStatus(400);
+    app.post('/api/settings', (req, res) => {
+        const { userId, achievements } = req.body;
+        if (!userId || !achievements) return res.sendStatus(400);
 
-    const userData = loadUserData(userId);
-    userData.todayStats = {};
-    userData.history = {};
-    // Keep achievements config but reset any state if stored there? 
-    // Achievements state is in todayStats (triggeredAchievements), so clearing todayStats clears that state.
-    // userData.achievements is CONFIG. use default or keep user overrides? 
-    // Assuming we want to keep CONFIG but reset STATS.
+        const userData = loadUserData(userId);
+        userData.achievements = achievements;
 
-    saveUserData(userId);
+        saveUserData(userId);
+        console.log(`Updated settings for ${userId}`);
+        res.json({ success: true });
+    });
 
-    io.emit(`stats_update_${userId}`, userData.todayStats);
-    res.json({ success: true });
-});
-
-app.post('/api/settings', (req, res) => {
-    const { userId, achievements } = req.body;
-    if (!userId || !achievements) return res.sendStatus(400);
-
-    const userData = loadUserData(userId);
-    userData.achievements = achievements;
-
-    saveUserData(userId);
-    console.log(`Updated settings for ${userId}`);
-    res.json({ success: true });
-});
-
-server.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${PORT}`));
+    server.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${PORT}`));

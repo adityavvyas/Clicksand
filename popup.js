@@ -1273,191 +1273,43 @@ async function initSettings() {
         }
     }
 
-    // --- Achievement Sites Logic ---
-    const achInput = document.getElementById('achievement-sites-input');
-    const achIntervalInput = document.getElementById('achievement-interval');
-    const achBtn = document.getElementById('save-achievements-btn');
-
-    if (achInput && achBtn) {
-        // Load existing
-        const achMaxCountInput = document.getElementById('achievement-max-count');
-
+    // --- BOOTSTRAP ---
+    document.addEventListener('DOMContentLoaded', async () => {
         try {
-            const achData = await chrome.storage.local.get(['achievement_sites', 'achievement_interval', 'achievement_max_count']);
-            if (achData.achievement_sites && Array.isArray(achData.achievement_sites)) {
-                achInput.value = achData.achievement_sites.join('\n');
-            }
-            if (achData.achievement_interval && achIntervalInput) {
-                achIntervalInput.value = achData.achievement_interval;
-            }
-            if (achData.achievement_max_count !== undefined && achMaxCountInput) {
-                achMaxCountInput.value = achData.achievement_max_count;
-            }
-        } catch (e) { }
-
-        achBtn.addEventListener('click', async () => {
-            const raw = achInput.value;
-            const domains = raw.split('\n')
-                .map(s => s.trim())
-                .filter(s => s.length > 0)
-                .map(s => s.replace(/^(?:https?:\/\/)?(?:www\.)?/i, '')); // Clean domain
-
-            let interval = 30;
-            if (achIntervalInput) {
-                interval = parseInt(achIntervalInput.value);
-                if (isNaN(interval) || interval < 1) interval = 30;
+            if (!chrome.storage || !chrome.storage.local) {
+                throw new Error("Storage permission missing or API unavailable");
             }
 
-            let maxCount = 0;
-            if (achMaxCountInput) {
-                maxCount = parseInt(achMaxCountInput.value);
-                if (isNaN(maxCount) || maxCount < 0) maxCount = 0;
+            // Get User ID
+            const res = await chrome.storage.local.get('userId');
+            userId = res.userId;
+            if (!userId) {
+                userId = crypto.randomUUID();
+                await chrome.storage.local.set({ userId });
             }
+            console.log("Popup User ID:", userId);
 
-            await chrome.storage.local.set({
-                achievement_sites: domains,
-                achievement_interval: interval,
-                achievement_max_count: maxCount
-            });
+            initSocket();
 
-            // Sync with Backend
-            try {
-                // Convert UI format (list + global settings) to Backend format (Map)
-                const achievementsConfig = {};
-                domains.forEach(domain => {
-                    achievementsConfig[domain] = {
-                        interval: interval * 60, // Minutes to Seconds
-                        maxCount: maxCount,
-                        message: "Streak Milestone Reached!"
-                    };
-                });
+            initTabs();
+            await initPins();
+            initTooltips();
+            await initSettings();
 
-                const { userId } = await chrome.storage.local.get('userId');
-                if (userId) {
-                    await fetch('https://clicksand-production.up.railway.app/api/settings', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            userId: userId,
-                            achievements: achievementsConfig
-                        })
-                    });
+            loadData(currentView);
+
+            // Live update: refresh every 1 second for real-time tracking display
+            setInterval(() => {
+                if (currentView !== 'settings') {
+                    loadData(currentView);
                 }
-            } catch (e) {
-                console.error("Failed to sync settings", e);
-            }
+            }, 1000);
 
-            alert('Achievement settings saved & synced!');
-        });
-    }
-
-    const resetBtn = document.getElementById('reset-achievements-btn');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', async () => {
-            if (confirm("Reset all achievement settings?")) {
-                await chrome.storage.local.set({
-                    achievement_sites: [],
-                    achievement_interval: 0,
-                    achievement_max_count: 0
-                });
-                achInput.value = '';
-                if (achIntervalInput) achIntervalInput.value = 0;
-                const achMaxCountInput = document.getElementById('achievement-max-count');
-                if (achMaxCountInput) achMaxCountInput.value = 0;
-                alert('Settings reset!');
-            }
-        });
-    }
-    const testBtn = document.getElementById('test-achievement-btn');
-    if (testBtn) {
-        testBtn.addEventListener('click', async () => {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-            if (!tab) {
-                alert("No active tab found.");
-                return;
-            }
-
-            if (tab.url.startsWith("chrome://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:")) {
-                alert("Cannot show achievements on system pages. Try a website like youtube.com");
-                return;
-            }
-
-            const payload = {
-                action: 'SHOW_ACHIEVEMENT',
-                title: 'Steam-Style Popup',
-                message: 'Unlocked: Developer Testing Mode!'
-            };
-
-            const attemptSend = () => new Promise((resolve, reject) => {
-                chrome.tabs.sendMessage(tab.id, payload, (response) => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                    } else {
-                        resolve(response);
-                    }
-                });
-            });
-
-            try {
-                // Attempt 1
-                await attemptSend();
-            } catch (error) {
-                console.log("Connection failed, attempting re-injection...");
-                // Attempt 2: Re-inject content script
-                try {
-                    await chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        files: ['content.js']
-                    });
-                    // Short delay for script to initialize
-                    await new Promise(r => setTimeout(r, 100));
-                    await attemptSend();
-                } catch (retryError) {
-                    console.log("Retry failed");
-                }
-            }
-        });
-    }
-}
-
-// --- BOOTSTRAP ---
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        if (!chrome.storage || !chrome.storage.local) {
-            throw new Error("Storage permission missing or API unavailable");
-        }
-
-        // Get User ID
-        const res = await chrome.storage.local.get('userId');
-        userId = res.userId;
-        if (!userId) {
-            userId = crypto.randomUUID();
-            await chrome.storage.local.set({ userId });
-        }
-        console.log("Popup User ID:", userId);
-
-        initSocket();
-
-        initTabs();
-        await initPins();
-        initTooltips();
-        await initSettings();
-
-        loadData(currentView);
-
-        // Live update: refresh every 1 second for real-time tracking display
-        setInterval(() => {
-            if (currentView !== 'settings') {
-                loadData(currentView);
-            }
-        }, 1000);
-
-    } catch (e) {
-        console.error("Init Error", e);
-        document.body.innerHTML = `<div style="padding:20px; color:red; text-align:center;">
+        } catch (e) {
+            console.error("Init Error", e);
+            document.body.innerHTML = `<div style="padding:20px; color:red; text-align:center;">
                 <h3>Extension Error</h3>
                 <p>${e.message}</p>
             </div>`;
-    }
-});
+        }
+    });

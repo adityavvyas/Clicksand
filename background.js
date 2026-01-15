@@ -37,31 +37,6 @@ function connectSocket() {
         });
         socket.on('connect', () => console.log("Background Socket Connected"));
 
-        // Listen for achievements
-        socket.on(`achievement_unlocked_${userId}`, (data) => {
-            console.log("Achievement Received:", data);
-
-            // DEBUG: Native Notification to verify signal received
-            chrome.notifications.create({
-                type: 'basic',
-                iconUrl: 'icon128.png', // Ensure this exists or use default
-                title: data.title || "Achievement Unlocked!",
-                message: data.message || "Congrats!",
-                priority: 2
-            });
-
-            // Broadcast to active tab to show popup
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                if (tabs[0]) {
-                    chrome.tabs.sendMessage(tabs[0].id, {
-                        action: 'SHOW_ACHIEVEMENT',
-                        title: "Achievement Unlocked!",
-                        message: data.message
-                    });
-                }
-            });
-        });
-
     } catch (e) {
         console.error("Socket Init Error:", e);
     }
