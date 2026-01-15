@@ -12,6 +12,43 @@ const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
+io.on('connection', (socket) => {
+    console.log('Client connected');
+
+    socket.on('update_settings', (payload) => {
+        const { userId, settings } = payload;
+        if (!userId || !settings) return;
+
+        const userData = loadUserData(userId);
+
+        // Update user data with new settings
+        if (settings.achievement_sites) userData.achievement_sites = settings.achievement_sites;
+        if (settings.achievement_interval !== undefined) userData.achievement_interval = settings.achievement_interval;
+        if (settings.achievement_limit !== undefined) userData.achievement_limit = settings.achievement_limit;
+
+        // Re-transform/Refresh the achievements map immediately
+        // Copy-paste logic from loadUserData or extract it? 
+        // For safety, let's just re-run the transform logic here or let the next load handle it.
+        // But since we modify userData in memory, we should update the map for the current session.
+        if (userData.achievement_sites && Array.isArray(userData.achievement_sites)) {
+            if (!userData.achievements) userData.achievements = {};
+            const globalInterval = parseInt(userData.achievement_interval) || 0;
+            const globalLimit = parseInt(userData.achievement_limit) || 0;
+
+            userData.achievement_sites.forEach(site => {
+                userData.achievements[site] = {
+                    limit: globalLimit * 60,
+                    interval: globalInterval * 60,
+                    message: "Time check!"
+                };
+            });
+        }
+
+        saveUserData(userId);
+        console.log(`Settings updated for ${userId}`);
+    });
+});
+
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
@@ -62,6 +99,27 @@ function loadUserData(userId) {
             console.error(`Error loading data for ${userId}`, e);
         }
     }
+
+    // --- TRANSFORM: Flat format to Map (if from client) ---
+    // Client sends: achievement_sites (Array), achievement_interval (Int), achievement_limit (Int)
+    // Server expects: achievements (Map: domain -> { limit, interval, ... })
+    if (userData.achievement_sites && Array.isArray(userData.achievement_sites)) {
+        if (!userData.achievements) userData.achievements = {};
+
+        const globalInterval = parseInt(userData.achievement_interval) || 0;
+        const globalLimit = parseInt(userData.achievement_limit) || 0;
+
+        userData.achievement_sites.forEach(site => {
+            // Apply global config to each site if not already specifically set? 
+            // Or overwrite? Let's overwrite to ensure syncing with client global settings.
+            userData.achievements[site] = {
+                limit: globalLimit * 60, // Client sends minutes, logic uses seconds
+                interval: globalInterval * 60, // Client sends minutes
+                message: "Time check!"
+            };
+        });
+    }
+
     statsCache.set(userId, userData);
     return userData;
 }

@@ -1325,16 +1325,37 @@ async function initSettings() {
     const resetBtn = document.getElementById('reset-achievements-btn');
     if (resetBtn) {
         resetBtn.addEventListener('click', async () => {
-            if (confirm("Reset all achievement settings?")) {
+            if (confirm("Reset achievement intervals to UNLIMITED (0)?")) {
                 await chrome.storage.local.set({
-                    achievement_sites: [],
-                    achievement_interval: 30,
-                    achievement_limit: 0
+                    // achievement_sites: [], // Keep sites? User asked to "reset intervals". Usually implies keeping the list.
+                    achievement_interval: 0,
+                    // achievement_limit: 0
                 });
-                achInput.value = '';
-                if (achIntervalInput) achIntervalInput.value = 30;
-                if (achLimitInput) achLimitInput.value = 0;
-                alert('Settings reset!');
+
+                if (achIntervalInput) achIntervalInput.value = 0;
+
+                // Also update server immediately? The next sync or load logic will handle it using the stored values
+                // But we should likely trigger a save to server if possible. 
+                // Since this is popup only, the next time content script or anything syncs it might work.
+                // But wait, the client PUSHES data to backend via `/api/log`? No, data is separate. 
+                // We actually need to send these settings to the backend for them to take effect?
+                // Currently `loadUserData` reads from disk. We haven't implemented a "Push Settings" to backend endpoint.
+                // The backend reads from `userId`.json. WHO writes to it? 
+                // AH! `handleTimeBatch` saves `stats`, but does it save CONFIG? 
+
+                // Currently, the EXTENSION storage is the source of truth for config, but the SERVER needs it.
+                // We need to send this config to the server.
+                // Let's add a quick ping to update settings.
+
+                socket.emit('update_settings', {
+                    userId, settings: {
+                        achievement_sites: achInput.value.split('\n').filter(s => s.trim()),
+                        achievement_interval: 0,
+                        achievement_limit: parseInt(achLimitInput?.value || 0)
+                    }
+                });
+
+                alert('Intervals reset to Unlimited (0)!');
             }
         });
     }

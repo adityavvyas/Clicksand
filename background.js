@@ -34,7 +34,6 @@ function connectSocket() {
         socket = io('https://clicksand-production.up.railway.app');
         socket.on('connect', () => console.log("Background Socket Connected"));
 
-        // Listen for achievements
         socket.on(`achievement_unlocked_${userId}`, (data) => {
             console.log("Achievement Received:", data);
 

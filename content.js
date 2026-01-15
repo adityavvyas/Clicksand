@@ -236,7 +236,14 @@
         </div>
     `;
 
-        document.body.appendChild(popup);
+        // Check for Fullscreen
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
+
+        if (fsElement) {
+            fsElement.appendChild(popup);
+        } else {
+            document.body.appendChild(popup);
+        }
 
         // Remove after animation (6s)
         setTimeout(() => {
