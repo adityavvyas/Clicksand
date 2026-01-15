@@ -1280,18 +1280,18 @@ async function initSettings() {
 
     if (achInput && achBtn) {
         // Load existing
-        const achLimitInput = document.getElementById('achievement-limit');
+        const achMaxCountInput = document.getElementById('achievement-max-count');
 
         try {
-            const achData = await chrome.storage.local.get(['achievement_sites', 'achievement_interval', 'achievement_limit']);
+            const achData = await chrome.storage.local.get(['achievement_sites', 'achievement_interval', 'achievement_max_count']);
             if (achData.achievement_sites && Array.isArray(achData.achievement_sites)) {
                 achInput.value = achData.achievement_sites.join('\n');
             }
             if (achData.achievement_interval && achIntervalInput) {
                 achIntervalInput.value = achData.achievement_interval;
             }
-            if (achData.achievement_limit && achLimitInput) {
-                achLimitInput.value = achData.achievement_limit;
+            if (achData.achievement_max_count !== undefined && achMaxCountInput) {
+                achMaxCountInput.value = achData.achievement_max_count;
             }
         } catch (e) { }
 
@@ -1307,16 +1307,16 @@ async function initSettings() {
                 if (isNaN(interval) || interval < 1) interval = 30;
             }
 
-            let limit = 0;
-            if (achLimitInput) {
-                limit = parseInt(achLimitInput.value);
-                if (isNaN(limit) || limit < 0) limit = 0;
+            let maxCount = 0;
+            if (achMaxCountInput) {
+                maxCount = parseInt(achMaxCountInput.value);
+                if (isNaN(maxCount) || maxCount < 0) maxCount = 0;
             }
 
             await chrome.storage.local.set({
                 achievement_sites: domains,
                 achievement_interval: interval,
-                achievement_limit: limit
+                achievement_max_count: maxCount
             });
 
             // Sync with Backend
@@ -1325,9 +1325,9 @@ async function initSettings() {
                 const achievementsConfig = {};
                 domains.forEach(domain => {
                     achievementsConfig[domain] = {
-                        limit: limit * 60, // Minutes to Seconds
                         interval: interval * 60, // Minutes to Seconds
-                        message: "Time Limit Reached!"
+                        maxCount: maxCount,
+                        message: "Streak Milestone Reached!"
                     };
                 });
 
@@ -1357,11 +1357,12 @@ async function initSettings() {
                 await chrome.storage.local.set({
                     achievement_sites: [],
                     achievement_interval: 0,
-                    achievement_limit: 0
+                    achievement_max_count: 0
                 });
                 achInput.value = '';
                 if (achIntervalInput) achIntervalInput.value = 0;
-                if (achLimitInput) achLimitInput.value = 0;
+                const achMaxCountInput = document.getElementById('achievement-max-count');
+                if (achMaxCountInput) achMaxCountInput.value = 0;
                 alert('Settings reset!');
             }
         });

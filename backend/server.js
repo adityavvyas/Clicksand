@@ -146,16 +146,12 @@ function checkAchievements(domain, entry, achievements, userId) {
     if (!achievements) return;
 
     // Check specific domain achievement
-    // Also check wildcard or categories if implemented later
-    // For now, simple domain match
     let config = achievements[domain];
 
-    // Support subdomains if main domain has config
+    // Support subdomains
     if (!config) {
         const root = normalizeDomain(domain);
         config = achievements[root];
-        // Iterate to find ending match if needed, but simple map lookup is faster if exact.
-        // If we want flexible matching:
         if (!config) {
             for (const key in achievements) {
                 if (isMatch(domain, key)) {
@@ -169,47 +165,33 @@ function checkAchievements(domain, entry, achievements, userId) {
     if (!config) return;
 
     const sessionSecs = entry.currentSessionTime;
-    const limit = config.limit || 0;
     const interval = config.interval || 0;
+    const maxCount = config.maxCount !== undefined ? config.maxCount : 0; // 0 = unlimited
 
-    if (limit > 0 && sessionSecs >= limit) {
-        // Check if already triggered
-        // We use a key like "limit_reached" or "interval_N"
+    if (interval > 0) {
+        // Step 1: Calculate how many intervals have been completed
+        // e.g. 60s, Interval 60s -> step 1. 119s -> step 1. 120s -> step 2.
+        const steps = Math.floor(sessionSecs / interval);
 
-        let shouldTrigger = false;
-        let triggerType = "";
-
-        // Initial Limit
-        if (!entry.triggeredAchievements["limit_reached"]) {
-            shouldTrigger = true;
-            triggerType = "limit_reached";
-        }
-        // Interval checks (after limit)
-        else if (interval > 0) {
-            const timeSinceLimit = sessionSecs - limit;
-            const steps = Math.floor(timeSinceLimit / interval);
-            if (steps > 0) {
-                const stepKey = `interval_${steps}`;
-                if (!entry.triggeredAchievements[stepKey]) {
-                    shouldTrigger = true;
-                    triggerType = stepKey;
-                    // Prevent spamming active intervals? Usually we just alert once per interval boundary
-                }
+        if (steps > 0) {
+            // Check Max Count (if enabled)
+            if (maxCount > 0 && steps > maxCount) {
+                return; // Stop triggering
             }
-        }
 
-        if (shouldTrigger) {
-            entry.triggeredAchievements[triggerType] = true;
+            // Check if THIS specific step has been triggered
+            const stepKey = `interval_${steps}`;
 
-            // Emit Event
-            io.emit(`achievement_unlocked_${userId}`, {
-                domain: domain,
-                message: config.message || "Time Limit Reached!",
-                type: 'limit'
-            });
+            if (!entry.triggeredAchievements[stepKey]) {
+                // Unlock!
+                entry.triggeredAchievements[stepKey] = true;
 
-            // Also save immediately? or let throttled handle it. 
-            // Throttled is fine.
+                io.emit(`achievement_unlocked_${userId}`, {
+                    domain: domain,
+                    message: config.message || `Streak: ${steps}x Intervals!`,
+                    type: 'streak'
+                });
+            }
         }
     }
 }
