@@ -123,14 +123,16 @@ function handleTimeBatch(batch) {
     const entry = todayStats[domain];
     const now = Date.now();
 
-    entry.time += activeSecs;
+    // Logic: Time is the MAX of Active or Video (so watching counts as working)
+    const effectiveIncrement = Math.max(activeSecs, videoSecs);
+
+    entry.time += effectiveIncrement;
     entry.video_time += videoSecs;
     entry.lastActiveTime = now;
     if (batch.icon) entry.icon = batch.icon;
 
     // Session Logic (Timeout 30m)
     const SESSION_TIMEOUT = 30 * 60 * 1000;
-    const effectiveIncrement = Math.max(activeSecs, videoSecs);
 
     if (effectiveIncrement > 0) {
         if (!entry.lastSessionUpdate || (now - entry.lastSessionUpdate > SESSION_TIMEOUT)) {
@@ -150,54 +152,16 @@ function handleTimeBatch(batch) {
     io.emit(`stats_update_${userId}`, todayStats);
 }
 
-function checkAchievements(domain, entry, userId) {
-    const userData = statsCache.get(userId);
-    if (!userData) return; // Should not happen if handleTimeBatch loaded it
-
-    const achievements = userData.achievements;
-
-    // Check against config
-    for (const [targetDomain, rule] of Object.entries(achievements)) {
-        if (isMatch(domain, targetDomain)) {
-            const sessionSecs = entry.currentSessionTime;
-            const limitSecs = rule.limit; // raw seconds for now (or minutes * 60)
-            const intervalSecs = rule.interval;
-
-            // Logic: 
-            // 1. Must cross limit
-            if (sessionSecs >= limitSecs) {
-                let shouldTrigger = false;
-                const lastTrigger = entry.triggeredAchievements[targetDomain] || 0;
-
-                // Interval 0 -> Trigger once
-                if (intervalSecs === 0) {
-                    if (lastTrigger === 0) shouldTrigger = true;
-                } else {
-                    const lastCheckpoint = entry.triggeredAchievements[targetDomain] || 0;
-                    if (lastCheckpoint === 0) {
-                        shouldTrigger = true; // First time
-                        entry.triggeredAchievements[targetDomain] = sessionSecs;
-                    } else if (intervalSecs > 0 && (sessionSecs - lastCheckpoint >= intervalSecs)) {
-                        shouldTrigger = true;
-                        entry.triggeredAchievements[targetDomain] = sessionSecs;
-                    }
-                }
-            }
-
-            if (shouldTrigger) {
-                // Emit only to CLIENT (via broadcast but isolated by ID event)
-                // We change event name to achievement_unlocked_USERID
-                io.emit(`achievement_unlocked_${userId}`, {
-                    domain: domain,
-                    message: rule.message,
-                    time: sessionSecs
-                });
-                // Update state is done above in checkpoint
-            }
-        }
-    }
+function saveUserData(userId) {
+    const data = statsCache.get(userId);
+    if (!data) return;
+    // Async save to prevent blocking logic
+    const filePath = getDataFile(userId);
+    const json = JSON.stringify(data, null, 2);
+    fs.writeFile(filePath, json, (err) => {
+        if (err) console.error(`Error saving data for ${userId}`, err);
+    });
 }
-
 
 const saveTimeouts = new Map();
 
