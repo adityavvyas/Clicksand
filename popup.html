@@ -189,11 +189,9 @@
         /* Compact Mode Enhancements */
         body.compact {
             width: 380px !important;
-            /* Slightly wider for better spacing */
             min-height: auto;
             border-radius: 12px;
-            overflow: hidden;
-            /* Clean edges */
+            /* overflow: hidden; -- REMOVED: Users need to scroll */
         }
 
         body.compact header {
@@ -205,11 +203,16 @@
             padding: 15px;
         }
 
-        body.compact .tabs,
+        /* Don't hide Tabs! Just make them compact or user gets stuck */
+        body.compact .tab {
+            padding: 4px 10px;
+            font-size: 11px;
+        }
+
         body.compact #chart-container,
         body.compact #sort-container {
             display: none !important;
-            /* Hide non-essentials */
+            /* Hide chart/sort to save space */
         }
 
         body.compact #stats-list {
@@ -282,6 +285,38 @@
 
         #confirmation-modal>div {
             animation: slideUpFade 0.4s 0.1s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+        }
+
+        /* Custom Scrollbar - Ensure it applies to HTML/Body */
+        html,
+        body {
+            overflow-y: overlay;
+            /* Try overlay or auto */
+            scrollbar-width: thin;
+            /* Firefox */
+            scrollbar-color: var(--text-muted) transparent;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            /* Thinner */
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--text-muted);
+            border-radius: 4px;
+            opacity: 0.5;
+            border: 2px solid transparent;
+            background-clip: content-box;
+            /* Floating effect */
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: var(--text-secondary);
         }
     </style>
 </head>
