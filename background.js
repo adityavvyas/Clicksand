@@ -31,13 +31,24 @@ function ensureUserId() {
 function connectSocket() {
     if (socket) return;
     try {
-        socket = io('https://clicksand-production.up.railway.app', {
-            transports: ['websocket', 'polling'], // Ensure compatibility
-            reconnection: true
-        });
+        socket = io('https://clicksand-production.up.railway.app');
         socket.on('connect', () => console.log("Background Socket Connected"));
 
-        // Achievements Listener Removed
+        // Listen for achievements
+        socket.on(`achievement_unlocked_${userId}`, (data) => {
+            console.log("Achievement Received:", data);
+
+            // Broadcast to active tab to show popup
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: 'SHOW_ACHIEVEMENT',
+                        title: "Achievement Unlocked!",
+                        message: data.message
+                    });
+                }
+            });
+        });
 
     } catch (e) {
         console.error("Socket Init Error:", e);

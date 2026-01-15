@@ -46,7 +46,10 @@ function loadUserData(userId) {
         todayStats: {},
         history: {},
         currentDate: new Date().toISOString().split('T')[0],
-        achievements: {} // Feature removed
+        achievements: { // Per user config or default?
+            "youtube.com": { limit: 120, interval: 60, message: "YouTube Limit Reached!" },
+            "goclasses.in": { limit: 300, interval: 0, message: "Study Break!" }
+        }
     };
 
     const filePath = getDataFile(userId);
@@ -132,7 +135,7 @@ function handleTimeBatch(batch) {
         entry.currentSessionTime += effectiveIncrement;
         entry.lastSessionUpdate = now;
 
-        // checkAchievements(domain, entry, userData.achievements, userId);
+        checkAchievements(domain, entry, userData.achievements, userId);
     }
 
     throttledSave(userId);
@@ -280,6 +283,16 @@ app.post('/api/reset', (req, res) => {
     res.json({ success: true });
 });
 
-// /api/settings route removed
+app.post('/api/settings', (req, res) => {
+    const { userId, achievements } = req.body;
+    if (!userId || !achievements) return res.sendStatus(400);
+
+    const userData = loadUserData(userId);
+    userData.achievements = achievements;
+
+    saveUserData(userId);
+    console.log(`Updated settings for ${userId}`);
+    res.json({ success: true });
+});
 
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${PORT}`));
